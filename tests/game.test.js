@@ -14,7 +14,7 @@ function game(settings={}) {
 }
 function winBid(g,value=3) {
   const dec=g.turn;
-  auctionAction(g,dec,'bid',value);
+  auctionAction(g,dec,'bid',2);
   auctionAction(g,g.turn,'pass');
   auctionAction(g,g.turn,'pass');
   assert.equal(g.phase,'talon');
@@ -53,6 +53,68 @@ test('all pass: refe to each, redeal after result',()=>{
   assert.equal(g.dealer,1);
   assert.deepEqual(g.scores.refe,[1,1,1]);
 });
+test('ordinary auction opens at Pik, even if players pass; Igra can open at any game',()=>{
+  const g=game();
+  assert.equal(g.auction.highSeat,null);
+  assert.throws(()=>auctionAction(g,1,'bid',3),/first ordinary bid must be Pik/i);
+  assert.equal(g.auction.highSeat,null);
+  auctionAction(g,1,'pass');
+  assert.throws(()=>auctionAction(g,2,'bid',5),/first ordinary bid must be Pik/i);
+  auctionAction(g,2,'bid',2);
+  assert.equal(g.auction.bid,2);
+  auctionAction(g,0,'bid',5);
+  assert.equal(g.auction.bid,5);
+  const h=game();
+  auctionAction(h,1,'hand',6);
+  assert.equal(h.auction.bid,6);
+  assert.equal(h.auction.hand,true);
+});
+test('invited defender cannot Kontra, earns no bula or supe, while inviter receives combined tricks',()=>{
+  const g=game();
+  const dec=winBid(g,4);
+  const caller=g.turn;
+  follow(g,caller,'dodjem');
+  const invited=g.turn;
+  follow(g,invited,'ne');
+  assert.equal(g.phase,'calling');
+  callPartner(g,caller,true);
+  assert.equal(g.invited,invited);
+  assert.equal(g.phase,'doubles');
+  // Invited player may accept but cannot escalate the contract.
+  assert.equal(g.turn,invited);
+  assert.throws(()=>doubleAction(g,invited,'kontra'),/invited partner/i);
+  assert.equal(g.multiplier,1);
+  doubleAction(g,invited,'ok');
+  assert.equal(g.turn,caller);
+  doubleAction(g,caller,'ok');
+  assert.equal(g.phase,'playing');
+  g.tricks=[0,0,0];g.tricks[dec]=6;g.tricks[caller]=1;g.tricks[invited]=3;
+  g.trickNumber=10;
+  g.lastTrick={winner:dec,cards:[],number:10};g.phase='trickReview';
+  advanceTrick(g);
+  assert.equal(g.scores.supe[caller][dec],32);
+  assert.equal(g.scores.bula[caller],100);
+  assert.deepEqual(g.scores.supe[invited],[0,0,0]);
+  assert.equal(g.scores.bula[invited],100);
+});
+test('caller can Kontra and invited defender remains point-free',()=>{
+  const g=game();const dec=winBid(g,5);
+  const caller=g.turn;
+  follow(g,caller,true);const invited=g.turn;follow(g,invited,false);
+  callPartner(g,caller,true);
+  doubleAction(g,invited,'ok');
+  doubleAction(g,caller,'kontra');
+  assert.equal(g.doubler,caller);
+  assert.equal(g.turn,dec);
+  doubleAction(g,dec,'ok');
+  g.tricks=[0,0,0];g.tricks[dec]=7;g.tricks[caller]=2;g.tricks[invited]=1;
+  g.trickNumber=10;g.lastTrick={winner:dec,cards:[],number:10};g.phase='trickReview';
+  advanceTrick(g);
+  assert.equal(g.scores.supe[caller][dec],60);
+  assert.equal(g.scores.bula[caller],120);
+  assert.equal(g.scores.bula[invited],100);
+  assert.deepEqual(g.scores.supe[invited],[0,0,0]);
+});
 test('priority bidder can match using Mogu',()=>{
   const g=game();
   auctionAction(g,1,'bid',2);
@@ -80,7 +142,7 @@ test('higher hand declaration overtakes lower, no talon taken',()=>{
 });
 test('talon is publicly visible until taken, hidden cards never leak',()=>{
   const g=game();
-  auctionAction(g,1,'bid',5);
+  auctionAction(g,1,'bid',2);
   auctionAction(g,2,'pass');auctionAction(g,0,'pass');
   assert.equal(viewFor(g,0,'SAMPLE').talon.length,2);
   takeTalon(g,1);
