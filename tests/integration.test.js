@@ -187,3 +187,59 @@ test('last-card undo requires approval from BOTH other players and restores turn
     proc.kill('SIGTERM');
   }
 });
+
+test('solo computer table is isolated from the friends room, reconnects, and can restart',async()=>{
+  const port=30000+randomInt(20000);
+  const server=spawn(process.execPath,['server.js'],{
+    cwd:process.cwd(),env:{...process.env,PORT:String(port),BOT_DELAY_MS:'0'},stdio:'ignore'
+  });
+  const peers=[];
+  try{
+    let online=false;
+    for(let i=0;i<100;i++){
+      try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){online=true;break;}}catch{}
+      await delay(20);
+    }
+    assert.ok(online,'server starts');
+    const friend=new Peer(`ws://127.0.0.1:${port}/ws`),solo=new Peer(`ws://127.0.0.1:${port}/ws`);
+    peers.push(friend,solo);
+    await Promise.all([friend.ready,solo.ready]);
+    const member=await friend.request('joinTable',{name:'Friend'});
+    assert.equal(member.ok,true);
+    const practice=await solo.request('joinSolo',{name:'Tester'});
+    assert.equal(practice.ok,true);
+    assert.equal(practice.seat,0);
+    await until(()=>solo.state?.mode==='solo'&&friend.state?.mode==='friends');
+    assert.deepEqual(solo.state.players.map(p=>p.name),['Tester','Computer 1','Computer 2']);
+    assert.equal(solo.state.members.length,3);
+    assert.equal(solo.state.history.length,0);
+    assert.equal(solo.state.hands.length,0);
+    assert.equal(friend.state.members.length,1,'solo users do not take multiplayer seats');
+    solo.action('settings',{startBula:50,maxRefe:3});
+    await until(()=>solo.state.settings.startBula===50&&solo.state.settings.maxRefe===3);
+    solo.action('start');
+    await until(()=>solo.state?.phase==='auction');
+    assert.equal(solo.state.hands.length,10);
+    await until(()=>solo.state.auction.history.some(p=>p.seat!==0));
+    // The bots bid without a second or third WebSocket connection.
+    assert.equal(friend.state.phase,'lobby');
+    assert.equal(friend.state.history.length,0,'practice scores do not touch the shared season');
+    const other=new Peer(`ws://127.0.0.1:${port}/ws`);peers.push(other);
+    await other.ready;
+    const restore=await other.request('joinSolo',{token:practice.token});
+    assert.equal(restore.ok,true);
+    assert.equal(restore.seat,0);
+    await until(()=>other.state?.mode==='solo');
+    assert.equal(other.state.hands.length,10);
+    assert.equal((await other.request('restartSolo')).ok,true);
+    await until(()=>other.state.phase==='lobby');
+    assert.deepEqual(other.state.players.map(p=>p.name),['Tester','Computer 1','Computer 2']);
+    assert.equal((await other.request('exitSolo')).ok,true);
+    assert.equal((await other.request('joinTable',{name:'Tester'})).ok,true);
+    await until(()=>friend.state.members.length===2);
+    assert.equal(friend.state.phase,'lobby');
+  }finally{
+    peers.forEach(p=>{try{p.close();}catch{}});
+    server.kill('SIGTERM');
+  }
+});
