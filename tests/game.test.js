@@ -80,10 +80,12 @@ test('invited defender cannot Kontra, earns no bula or supe, while inviter recei
   callPartner(g,caller,true);
   assert.equal(g.invited,invited);
   assert.equal(g.phase,'doubles');
+  assert.deepEqual(viewFor(g,caller,'ROOM').availableDoubles,['ok','kontra']);
   // The inviter goes first and accepts, then the invited player cannot escalate.
   assert.equal(g.turn,caller);
   doubleAction(g,caller,'ok');
   assert.equal(g.turn,invited);
+  assert.deepEqual(viewFor(g,invited,'ROOM').availableDoubles,['ok']); // Kontra button must be hidden.
   assert.throws(()=>doubleAction(g,invited,'kontra'),/invited partner/i);
   assert.equal(g.multiplier,1);
   doubleAction(g,invited,'ok');
