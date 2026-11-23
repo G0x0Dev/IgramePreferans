@@ -89,10 +89,15 @@
 
   const icon = c => `<span class="suit-symbol ${['D','H'].includes(c.s)?'red':''}">${c.s?SUITS[c.s]:''}</span>`;
   function cardHtml(c,{tiny=false,disabled=false,selectable=false,selectedCard=false}={}) {
-    if(!c)return `<div class="playing-card back ${tiny?'tiny':''}"></div>`;
-    const s=c[0],r=c.slice(1);
-    return `<div class="playing-card ${tiny?'tiny':''} ${['D','H'].includes(s)?'red':''} ${disabled?'disabled':''} ${selectedCard?'selected':''}" ${selectable?`data-card="${esc(c)}" role="button" tabindex="0" aria-label="${esc(r)} of ${esc(s)}"`:''}>
-      <span class="corner">${esc(r)}<small>${SUITS[s]}</small></span><span class="suit-big">${SUITS[s]}</span></div>`;
+    if(!c)return `<div class="playing-card back ${tiny?'tiny':''}" aria-label="Face-down card"><span class="back-emblem">♠</span></div>`;
+    const suit=c[0],rank=c.slice(1),symbol=SUITS[suit];
+    const red=suit==='D'||suit==='H';
+    const rankLabel={J:'Jack',Q:'Queen',K:'King',A:'Ace'}[rank]||rank;
+    const suitLabel={S:'Spades',D:'Diamonds',C:'Clubs',H:'Hearts'}[suit];
+    return `<div class="playing-card ${tiny?'tiny':''} ${red?'red':'black'} ${disabled?'disabled':''} ${selectedCard?'selected':''}" ${selectable?`data-card="${esc(c)}" role="button" tabindex="0" aria-label="${rankLabel} of ${suitLabel}"`:''}>
+      <span class="card-corner"><b>${esc(rank)}</b><small>${symbol}</small></span>
+      <span class="card-center" aria-hidden="true"><span class="suit-big">${symbol}</span><span class="court-flourish">${['J','Q','K','A'].includes(rank)?'✦':''}</span></span>
+      <span class="card-corner mirrored" aria-hidden="true"><b>${esc(rank)}</b><small>${symbol}</small></span></div>`;
   }
   function button(title,action,opts={}) {
     const {value,variant='',disabled=false,extra=''}=opts;
