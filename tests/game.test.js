@@ -287,9 +287,9 @@ test('betl forces both defenders in; failing betl awards 60 supe to each',()=>{
   assert.equal(g.scores.supe[2][1],70);
   assert.equal(g.scores.bula[1],114);
 });
-test('complete 10-trick hand with strictly legal actions, score sum remains coherent',()=>{
+test('legal trick-taking stops at fifth defensive trick or after all ten',()=>{
   const g=game();const dec=winBid(g,4);twoDefenders(g,dec);
-  for(let t=0;t<10;t++){
+  for(let t=0;t<10 && g.phase==='playing';t++){
     const activeCount=g.active.length;
     for(let i=0;i<activeCount;i++){
       const seat=g.turn,valid=legalCards(g,seat);
@@ -300,8 +300,13 @@ test('complete 10-trick hand with strictly legal actions, score sum remains cohe
     advanceTrick(g);
   }
   assert.equal(g.phase,'summary');
-  assert.equal(g.tricks.reduce((a,b)=>a+b,0),10);
-  assert.deepEqual(g.hands.map(h=>h.length),[0,0,0]);
+  const total=g.tricks.reduce((a,b)=>a+b,0);
+  const defense=total-g.tricks[dec];
+  assert.ok(total<=10);
+  assert.ok(total===10||defense===5, 'early stop requires five actual defensive tricks');
+  assert.equal(total,g.trickNumber, 'only completed tricks are counted');
+  if(total<10)assert.ok(g.hands.some(h=>h.length>0));
+  else assert.deepEqual(g.hands.map(h=>h.length),[0,0,0]);
   assert.deepEqual(finalScores(g).reduce((a,b)=>a+b,0),g.scores.bula.reduce((a,b)=>a+b,0)*10);
 });
 
@@ -332,3 +337,73 @@ test('ranks stay ascending and no cards are lost even when a hand lacks black su
   assert.equal(new Set(hand).size,6);
 });
 
+
+test('ordinary game stops at five combined defensive tricks, scores only actual captured tricks',()=>{
+  const g=game();const dec=winBid(g,5);twoDefenders(g,dec);
+  const defenders=[0,1,2].filter(seat=>seat!==dec);
+  g.tricks[dec]=3;g.tricks[defenders[0]]=2;g.tricks[defenders[1]]=2;
+  g.trickNumber=7;g.lastTrick={winner:defenders[0],cards:[],number:7};g.phase='trickReview';
+  advanceTrick(g);
+  assert.equal(g.phase,'playing','four defensive tricks are not yet enough');
+  g.tricks[defenders[1]]++;g.trickNumber=8;
+  g.lastTrick={winner:defenders[1],cards:[],number:8};g.phase='trickReview';
+  advanceTrick(g);
+  assert.equal(g.phase,'summary');
+  assert.equal(g.trickNumber,8);
+  assert.equal(g.scores.bula[dec],110,'declarer records normal Tref failure');
+  assert.equal(g.scores.supe[defenders[0]][dec],20,'two actual tricks earned 20 supe');
+  assert.equal(g.scores.supe[defenders[1]][dec],30,'three actual tricks earned 30 supe');
+  assert.deepEqual(g.summary.tricks,g.tricks);
+  assert.match(g.summary.details,/five tricks/i);
+  assert.throws(()=>advanceTrick(g),/No completed trick/);
+});
+test('Kontra scoring at early finish counts five defensive tricks, not ten minus declarer',()=>{
+  const g=game(),dec=winBid(g,5);
+  follow(g,g.turn,true);follow(g,g.turn,true);
+  const doubler=g.turn;
+  doubleAction(g,doubler,'kontra');
+  doubleAction(g,dec,'ok');
+  const defenders=[0,1,2].filter(seat=>seat!==dec);
+  g.tricks[dec]=2;g.tricks[defenders[0]]=3;g.tricks[defenders[1]]=2;
+  g.trickNumber=7;g.phase='trickReview';
+  g.lastTrick={winner:defenders[0],number:7,cards:[]};
+  advanceTrick(g);
+  assert.equal(g.phase,'summary');
+  assert.equal(g.scores.bula[dec],120);
+  assert.equal(g.scores.supe[doubler][dec],100,'only five supe-bearing tricks at 20 each');
+  assert.equal(g.scores.bula[doubler],100,'doubler met the five-trick goal');
+});
+test('invited partner earns nothing when their side reaches five tricks early',()=>{
+  const g=game(),dec=winBid(g,5);
+  const caller=g.turn;
+  follow(g,caller,true);follow(g,g.turn,false);
+  const invited=[0,1,2].find(seat=>seat!==dec&&seat!==caller);
+  callPartner(g,caller,true);
+  doubleAction(g,g.turn,'ok');doubleAction(g,g.turn,'ok');
+  g.tricks[dec]=1;g.tricks[caller]=2;g.tricks[invited]=3;
+  g.trickNumber=6;g.phase='trickReview';
+  g.lastTrick={winner:invited,number:6,cards:[]};
+  advanceTrick(g);
+  assert.equal(g.phase,'summary');
+  assert.equal(g.scores.supe[caller][dec],50,'inviter takes all five scored tricks');
+  assert.deepEqual(g.scores.supe[invited],[0,0,0]);
+  assert.equal(g.scores.bula[invited],100);
+});
+test('Betl remains exempt from five-defender-trick early stop',()=>{
+  const g=game();
+  auctionAction(g,1,'hand',6);auctionAction(g,2,'pass');auctionAction(g,0,'pass');
+  doubleAction(g,g.turn,'ok');doubleAction(g,g.turn,'ok');
+  const dec=g.contract.declarer,defenders=[0,1,2].filter(seat=>seat!==dec);
+  g.tricks[defenders[0]]=3;g.tricks[defenders[1]]=2;
+  g.trickNumber=5;g.phase='trickReview';
+  g.lastTrick={winner:defenders[0],number:5,cards:[]};
+  advanceTrick(g);
+  assert.equal(g.phase,'playing','Betl continues even after five defensive tricks');
+  g.tricks[dec]=1;g.tricks[defenders[0]]=5;g.tricks[defenders[1]]=4;
+  g.trickNumber=10;g.phase='trickReview';
+  g.lastTrick={winner:defenders[0],number:10,cards:[]};
+  advanceTrick(g);
+  assert.equal(g.phase,'summary');
+  assert.equal(g.scores.supe[defenders[0]][dec],70);
+  assert.equal(g.scores.supe[defenders[1]][dec],70);
+});

@@ -335,6 +335,15 @@ export function advanceTrick(g) {
   assert(g.phase==='trickReview','No completed trick to advance.');
   const winner=g.lastTrick.winner;
   g.trick=[];
+  // In every contract except Betl, five tricks for the defenders mean
+  // the declarer can no longer reach the six required for success.
+  // Stop immediately; do not credit any unplayed tricks to either side.
+  const dec=g.contract.declarer;
+  const defenderTricks=g.tricks.reduce((sum,count,seat)=>sum+(seat===dec?0:count),0);
+  if(g.contract.value!==6 && defenderTricks>=5 && g.trickNumber<10) {
+    finishRound(g,'Defenders reached five tricks; the round ended early. Only tricks actually taken are scored.');
+    return;
+  }
   if(g.trickNumber===10) { finishRound(g); return; }
   g.turn=winner; g.phase='playing';
 }
@@ -346,6 +355,9 @@ function finishRound(g,note='') {
   const beforeBula=[...g.scores.bula];
   const beforeSupe=g.scores.supe.map(row=>[...row]);
   const won=g.tricks[dec];
+  // Only completed tricks count. The old "10 - declarer tricks" assumed
+  // all ten were played, which over-awarded supe when a hand ends early.
+  const defenseTricks=defenders.reduce((sum,i)=>sum+g.tricks[i],0);
   const decSuccess=g.contract.value===6 ? won===0 : won>=6;
   g.scores.bula[dec] += decSuccess ? -points : points;
   if(g.contract.value===6) {
@@ -356,11 +368,9 @@ function finishRound(g,note='') {
     }
     if(g.doubler!==null && decSuccess) g.scores.bula[g.doubler]+=points;
   } else if(g.doubler!==null) {
-    const defenseTricks=10-won;
     g.scores.supe[g.doubler][dec]+=defenseTricks*points;
     if(defenseTricks<5) g.scores.bula[g.doubler]+=points;
   } else if(g.caller!==null) {
-    const defenseTricks=10-won;
     g.scores.supe[g.caller][dec]+=defenseTricks*points;
     if(defenseTricks<4) g.scores.bula[g.caller]+=points;
   } else {
