@@ -80,13 +80,13 @@ test('invited defender cannot Kontra, earns no bula or supe, while inviter recei
   callPartner(g,caller,true);
   assert.equal(g.invited,invited);
   assert.equal(g.phase,'doubles');
-  // Invited player may accept but cannot escalate the contract.
+  // The inviter goes first and accepts, then the invited player cannot escalate.
+  assert.equal(g.turn,caller);
+  doubleAction(g,caller,'ok');
   assert.equal(g.turn,invited);
   assert.throws(()=>doubleAction(g,invited,'kontra'),/invited partner/i);
   assert.equal(g.multiplier,1);
   doubleAction(g,invited,'ok');
-  assert.equal(g.turn,caller);
-  doubleAction(g,caller,'ok');
   assert.equal(g.phase,'playing');
   g.tricks=[0,0,0];g.tricks[dec]=6;g.tricks[caller]=1;g.tricks[invited]=3;
   g.trickNumber=10;
@@ -102,7 +102,6 @@ test('caller can Kontra and invited defender remains point-free',()=>{
   const caller=g.turn;
   follow(g,caller,true);const invited=g.turn;follow(g,invited,false);
   callPartner(g,caller,true);
-  doubleAction(g,invited,'ok');
   doubleAction(g,caller,'kontra');
   assert.equal(g.doubler,caller);
   assert.equal(g.turn,dec);
