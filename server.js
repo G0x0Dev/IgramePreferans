@@ -11,23 +11,19 @@ const staticPaths=new Map([
   ['/','index.html'],['/index.html','index.html'],['/app.js','app.js'],['/styles.css','styles.css']
 ]);
 const mime={'index.html':'text/html; charset=utf-8','app.js':'application/javascript; charset=utf-8','styles.css':'text/css; charset=utf-8'};
-const rooms=new Map();
 const clients=new Map();
-const codeChars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const ROOM_CODE='FRIENDS';
+const FRIEND_LIMIT=5;
+const room={code:ROOM_CODE,game:createGame(),members:[],nextMemberId:1,updated:Date.now(),timer:null};
 const MAX_MESSAGE=24_000;
 const GUID='258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 let socketCounter=0;
-function makeCode() {
-  let code;
-  do {code=Array.from({length:6},()=>codeChars[randomBytes(1)[0]%codeChars.length]).join('');}while(rooms.has(code));
-  return code;
-}
 const nameValid=v=>typeof v==='string'&&v.trim().length>=1&&v.trim().length<=24;
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   if(url.pathname==='/health'){
     res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});
-    res.end(JSON.stringify({status:'ok',rooms:rooms.size}));return;
+    res.end(JSON.stringify({status:'ok',rooms:1}));return;
   }
   const file=staticPaths.get(url.pathname);
   if(req.method!=='GET'||!file){res.writeHead(404);res.end('Not found');return;}
@@ -37,7 +33,7 @@ const server=http.createServer(async(req,res)=>{
       'Content-Type':mime[file],
       'X-Content-Type-Options':'nosniff',
       'Referrer-Policy':'same-origin',
-      'Cache-Control':file==='index.html'?'no-store':'public, max-age=300'
+      'Cache-Control':'no-store'
     });res.end(bytes);
   }catch{res.writeHead(500);res.end('Unable to serve site');}
 });
@@ -58,35 +54,49 @@ function reply(client,id,data){
 }
 function sendState(room){
   room.updated=Date.now();
-  for(const seat of [0,1,2]){
-    const player=room.game.players[seat];
-    if(!player)continue;
-    const view=viewFor(room.game,seat,room.code);
-    for(const cid of player.connections)send(clients.get(cid),'state',view);
+  const members=room.members.map(m=>({id:m.id,name:m.name,online:m.online,seat:m.seat}));
+  for(const member of room.members){
+    const view=viewFor(room.game,member.seat,room.code);
+    view.members=members;
+    view.memberId=member.id;
+    view.myName=member.name;
+    view.friendLimit=FRIEND_LIMIT;
+    for(const cid of member.connections)send(clients.get(cid),'state',view);
   }
 }
 function detach(client){
-  const {room,seat}=client;
-  if(!room||!Number.isInteger(seat))return;
-  const player=room.game.players[seat];
-  if(player){player.connections.delete(client.id);player.online=player.connections.size>0;}
-  client.room=null;client.seat=null;client.token=null;
+  const {room,member}=client;
+  if(!room||!member)return;
+  member.connections.delete(client.id);
+  member.online=member.connections.size>0;
+  client.room=null;client.seat=null;client.member=null;client.token=null;
   sendState(room);
 }
-function attach(client,room,seat){
+function attach(client,room,member){
   if(client.room)detach(client);
-  const p=room.game.players[seat];
-  client.room=room;client.seat=seat;client.token=p.token;
-  p.connections.add(client.id);p.online=true;
+  client.room=room;client.member=member;client.seat=member.seat;client.token=member.token;
+  member.connections.add(client.id);member.online=true;
 }
 function session(client){
-  const {room,seat,token}=client;
-  if(!room||!Number.isInteger(seat)||room.game.players[seat]?.token!==token)throw Error('Session expired. Please rejoin.');
-  return {room,seat};
+  const {room,member,token}=client;
+  if(!room||!member||!room.members.includes(member)||member.token!==token)throw Error('Session expired. Please rejoin.');
+  return {room,seat:member.seat,member};
+}
+function removeMember(room,member){
+  if(member.seat!==null)room.game.players[member.seat]=null;
+  room.members=room.members.filter(m=>m!==member);
+  for(const id of [...member.connections]){
+    const connection=clients.get(id);
+    if(!connection)continue;
+    connection.room=null;connection.member=null;connection.seat=null;connection.token=null;
+    send(connection,'leftTable',{});
+  }
+  member.connections.clear();member.online=false;member.seat=null;
 }
 function guard(client,event,fn){
   try{
     const {room,seat}=session(client);
+    if(seat===null)throw Error('You are waiting. Choose a seat before playing.');
     fn(room.game,seat,room);
     room.updated=Date.now();
     if(process.env.DEBUG_GAME)console.log(room.code,seat,event,room.game.phase);
@@ -105,48 +115,70 @@ function settleReview(room){
 function handleMessage(client,message){
   if(!message||typeof message!=='object'||typeof message.event!=='string')return;
   const {event,data={},id}=message;
-  if(event==='createRoom'){
+  if(event==='joinTable'){
     try{
-      if(!nameValid(data.name))throw Error('Enter a name (1–24 characters).');
-      if(client.room)detach(client);
-      const code=makeCode(),game=createGame(data.settings||{});
-      const token=randomBytes(28).toString('hex');
-      const room={code,game,updated:Date.now(),timer:null};
-      game.players[0]={name:data.name.trim(),token,connections:new Set(),online:false};
-      rooms.set(code,room);attach(client,room,0);
-      reply(client,id,{ok:true,code,token,seat:0});sendState(room);
+      const previous=room.members.find(m=>data.token&&m.token===data.token);
+      let member=previous;
+      if(!member){
+        if(!nameValid(data.name))throw Error('Enter your name (1–24 characters).');
+        const name=data.name.trim();
+        if(room.members.some(m=>m.name.toLowerCase()===name.toLowerCase()))
+          throw Error('This name is already in the group. Reconnect with the original browser, or ask someone to remove your offline entry.');
+        if(room.members.length>=FRIEND_LIMIT)throw Error('All five friend spots are occupied. Ask the group to free an offline entry.');
+        const open=room.game.players.findIndex(p=>!p);
+        const seat=room.game.phase==='lobby' && open>=0 ? open : null;
+        member={id:room.nextMemberId++,name,token:randomBytes(28).toString('hex'),connections:new Set(),online:false,seat};
+        room.members.push(member);
+        if(seat!==null)room.game.players[seat]=member;
+      }
+      attach(client,room,member);
+      reply(client,id,{ok:true,code:ROOM_CODE,token:member.token,seat:member.seat});sendState(room);
     }catch(e){reply(client,id,{ok:false,error:e.message});}
     return;
   }
-  if(event==='joinRoom'){
+  if(['takeSeat','sitOut','leaveTable','removeOffline','newMatch'].includes(event)){
     try{
-      const code=String(data.code||'').toUpperCase().trim(),room=rooms.get(code);
-      if(!room)throw Error('Room not found. Check your invite code.');
-      const existing=room.game.players.findIndex(p=>p&&data.token&&p.token===data.token);
-      let seat=existing,token=data.token;
-      if(existing<0){
-        if(!nameValid(data.name))throw Error('Enter a name (1–24 characters).');
-        if(room.game.phase!=='lobby')throw Error('The match has started. Reconnect in your original browser.');
-        seat=room.game.players.findIndex(p=>!p);
-        if(seat<0)throw Error('This room is full (3 players).');
-        token=randomBytes(28).toString('hex');
+      const {member}=session(client);
+      if(event==='newMatch'){
+        if(room.game.phase!=='summary'||!room.game.finished)throw Error('The current match has not finished.');
+        const settings=room.game.settings;
+        room.game=createGame(settings);
+        for(const m of room.members)if(m.seat!==null)room.game.players[m.seat]=m;
+      }else{
+        if(room.game.phase!=='lobby')throw Error('Player changes are only allowed before a match starts.');
+        if(event==='takeSeat'){
+          if(member.seat!==null)throw Error('You already have a seat.');
+          const seat=room.game.players.findIndex(p=>!p);
+          if(seat<0)throw Error('All three seats are occupied. Ask a player to sit out.');
+          member.seat=seat;room.game.players[seat]=member;
+        }else if(event==='sitOut'){
+          if(member.seat===null)throw Error('You are already waiting.');
+          room.game.players[member.seat]=null;member.seat=null;
+        }else if(event==='leaveTable'){
+          removeMember(room,member);
+        }else if(event==='removeOffline'){
+          if(member.seat===null)throw Error('Only a seated player can free an inactive entry.');
+          const target=room.members.find(m=>m.id===data.memberId);
+          if(!target||target.online)throw Error('Only offline group members can be removed.');
+          removeMember(room,target);
+        }
       }
-      if(client.room)detach(client);
-      if(existing<0)room.game.players[seat]={name:data.name.trim(),token,connections:new Set(),online:false};
-      attach(client,room,seat);
-      reply(client,id,{ok:true,code,token,seat});sendState(room);
+      reply(client,id,{ok:true});sendState(room);
     }catch(e){reply(client,id,{ok:false,error:e.message});}
     return;
   }
   const action=(fn)=>guard(client,event,fn);
   switch(event){
     case 'settings':action((g,seat)=>{
-      if(seat!==0||g.phase!=='lobby')throw Error('Only the host may adjust settings before starting.');
-      const settings=createGame(data).settings;
+      if(g.phase!=='lobby')throw Error('Settings can only be changed before starting a match.');
+      const b=Number(data.startBula),r=Number(data.maxRefe);
+      if(!Number.isInteger(b)||b<50||b>120||![2,3,4].includes(r))
+        throw Error('Choose bula from 50 to 120 and refe from 2 to 4.');
+      const settings=createGame({startBula:b,maxRefe:r}).settings;
       g.settings=settings;
       g.scores.bula=[settings.startBula,settings.startBula,settings.startBula];
     });break;
-    case 'start':action((g,seat)=>{if(seat!==0)throw Error('Only host can start.');deal(g);});break;
+    case 'start':action((g)=>{if(!g.players.every(p=>p?.online))throw Error('Three online players must take seats before dealing.');deal(g);});break;
     case 'nextRound':action(g=>{if(g.phase!=='summary')throw Error('This round has not ended.');deal(g);});break;
     case 'bid':action((g,seat)=>auctionAction(g,seat,data.action,data.value));break;
     case 'takeTalon':action((g,seat)=>takeTalon(g,seat));break;
@@ -193,7 +225,7 @@ server.on('upgrade',(req,socket,head)=>{
   const accept=createHash('sha1').update(key+GUID).digest('base64');
   socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: '+accept+'\r\n\r\n');
   socket.setNoDelay(true);
-  const client={id:++socketCounter,socket,buffer:Buffer.alloc(0),closed:false,room:null,seat:null,token:null};
+  const client={id:++socketCounter,socket,buffer:Buffer.alloc(0),closed:false,room:null,seat:null,member:null,token:null};
   clients.set(client.id,client);
   socket.on('data',data=>readFrames(client,data));
   socket.on('error',()=>{});
@@ -204,10 +236,5 @@ server.on('upgrade',(req,socket,head)=>{
 setInterval(()=>{
   for(const client of clients.values())if(!client.closed&&client.socket.writable)client.socket.write(frame(Buffer.alloc(0),9));
 },25_000).unref();
-// Clean up inactive rooms after 48 hours; an active room requires a single process.
-setInterval(()=>{
-  const now=Date.now();
-  for(const [code,room] of rooms)if(now-room.updated>48*60*60*1000){if(room.timer)clearTimeout(room.timer);rooms.delete(code);}
-},60*60*1000).unref();
 const port=Number(process.env.PORT||3000);
 server.listen(port,'0.0.0.0',()=>console.log(`Preferans online at http://localhost:${port}`));
