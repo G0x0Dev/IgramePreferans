@@ -1,6 +1,6 @@
 # Preferans — one online table for five friends
 
-Play Preferans in a browser with one shared table for up to five friends (three play each hand, two can watch or wait). Based on the **[Preferans Klub rules, version 1.2](https://www.preferansklub.com/pravila1.htm)**. The game includes private hands, legal move enforcement, real-time WebSockets and automatic scoring. Share the same site URL with your group; there are no room codes.
+Play Preferans in a browser with one shared table for up to five friends (three play each hand, two can watch or wait). Based on the **[Preferans Klub rules, version 1.2](https://www.preferansklub.com/pravila1.htm)**. The game includes private hands, legal move enforcement, real-time WebSockets, automatic scoring and a separate solo practice mode versus two computer players. Share the same site URL with your group; there are no room codes.
 
 ## Start on your computer
 
@@ -32,6 +32,16 @@ To play over the public internet, deploy the app as described below; `localhost`
 This project also works on other single-instance Node hosts (Railway, Fly.io, a VPS). The host must support **WebSocket upgrades**, long-lived connections, and the `PORT` environment variable. HTTPS deployments automatically use secure `wss://` WebSockets. No API keys are needed.
 
 **Hosting limitations:** The current match and five-friend roster live in server memory; restart or Render sleep resets the live game and roster. **Finished-match history is saved to `preferans-results.json` (or `HISTORY_FILE` / `DATA_DIR`)**, but **Render Free uses an ephemeral filesystem**, so history files may disappear on redeploy or restart. The website keeps a copy of saved match records in each connected browser and can restore them when server history is empty; friends can also use **Download results backup** and **Restore backup**. Download the JSON backup regularly, and for guaranteed multi-device durability, deploy a durable database or persistent disk. Restored score records are accepted from seated friends; use this with people you trust. Use a single Render instance; horizontal scaling is not supported.
+
+## Solo practice against computer players
+
+On the welcome page, choose **Play solo vs 2 computers** instead of joining the shared table. Enter your name and set bula (50–120) and refe (2–4), then choose **Deal cards · Start practice**. You hold one hand and **Computer 1** and **Computer 2** automatically make legal bids, decide whether to defend or invite a partner, answer Kontra, take/discard the talon and play legal tricks. You still choose your own actions, and can start a new match or restart the current practice at any time.
+
+- Solo practice uses **its own private, temporary server session** (rejoining on refresh is supported). It never joins or occupies the five-friend table.
+- **Practice results do not count** towards the shared match history, wins or cumulative leaderboard.
+- These are **basic rule-following opponents**, useful for testing the flow and scoring. They are not advanced strategic Preferans AI and may play imperfectly.
+- Press **Back to friends** to return to the shared table. Existing friend sessions are kept separately in browser storage.
+- Server restarts clear active solo games, just as they clear active multiplayer rounds.
 
 ## Rules implemented
 
