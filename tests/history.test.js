@@ -18,7 +18,7 @@ test('leaderboard adds scores by case-insensitive friend name',()=>{
   ['Dora',1,400,1],['Cene',1,950,0],['Boris',2,1400,0],['ANA',2,1300,1]
  ].sort((a,b)=>a[2]-b[2])); 
  assert.equal(board.find(p=>p.name.toLowerCase()==='ana').total,1300);
- assert.equal(board.find(p=>p.name==='Ana').wins,1);
+ assert.equal(board.find(p=>p.name.toLowerCase()==='ana').wins,1);
 });
 test('invalid or forged-looking scores and duplicate player identities are ignored',()=>{
  assert.equal(normalizeRecord({...rows[0],players:[...rows[0].players.slice(0,2),{name:'ana',score:10}]}),null);
