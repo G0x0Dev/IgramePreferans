@@ -161,7 +161,7 @@
       ${rows.map(p=>`<tr class="${p.position===1?'leader-row':''}"><td>#${p.position}</td><td>${esc(p.name)}</td><td>${p.games}</td><td>${p.wins}</td><td class="number">${p.total}</td></tr>`).join('')}</tbody></table>`
       :'<p class="muted-note">No finished matches yet. Scores are added after a match ends.</p>'}
       <p class="muted-note">Lower cumulative score leads. All finished matches are added by player name; games played and wins are shown because some friends may play more matches.</p>
-      <div class="action-row">${button('Download results backup','exportHistory',{variant:'small'})}${button('Restore backup','importHistory',{variant:'small subtle'})}</div>
+      <div class="action-row">${button('Download results backup','exportHistory',{variant:'small'})}${state.seat===null?'':button('Restore backup','importHistory',{variant:'small subtle'})}</div>
       <h4 class="history-title">Finished games (${games.length})</h4>
       ${games.length?`<div class="history-list">${games.slice(0,12).map((m,i)=>`<div class="history-match"><strong>Game ${games.length-i} · ${esc(new Date(m.at).toLocaleDateString())}</strong><small>${esc(m.players.map(p=>p.name+': '+p.score).join(' · '))}</small></div>`).join('')}</div>`:
       '<p class="muted-note">Completed games will appear here and count toward the standings.</p>'}
