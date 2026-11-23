@@ -391,6 +391,13 @@ export function finalScores(g) {
     return b*10 - outgoing + incoming;
   });
 }
+export function allowedDoubles(g,seat) {
+  if(g.phase!=='doubles' || g.turn!==seat || !isInt(seat))return [];
+  if(g.doubleStage===0){
+    return ['ok',...(seat!==g.invited && g.follows[seat]===true ? ['kontra']:[])];
+  }
+  return ['ok',g.doubleStage===1?'rekontra':'subkontra'];
+}
 export function viewFor(g,seat,roomCode) {
   const own=isInt(seat)&&seat>=0&&seat<=2;
   return {
@@ -402,7 +409,7 @@ export function viewFor(g,seat,roomCode) {
     auction:g.auction ? {...g.auction} : null,
     contract:g.contract?{...g.contract}:null,
     follows:g.follows,followMessages:g.followMessages,caller:g.caller,invited:g.invited,doubler:g.doubler,doubleStage:g.doubleStage,multiplier:g.multiplier,
-    turn:g.turn,firstBidder:g.firstBidder,trick:g.trick,lastTrick:g.lastTrick,
+    turn:g.turn,firstBidder:g.firstBidder,trick:g.trick,lastTrick:g.lastTrick,availableDoubles:own?allowedDoubles(g,seat):[],
     tricks:g.tricks,trickNumber:g.trickNumber,active:g.active,
     legal:own ? legalCards(g,seat):[],summary:g.summary,finished:g.finished,
     log:g.log.slice(-22),names:CONTRACTS.map(c=>c.name)
