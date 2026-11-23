@@ -461,7 +461,7 @@ test('plain Betl and Igra-Betl fail immediately on declarer first captured trick
     assert.equal(g.scores.supe[0][1],handContract?70:60);
     assert.equal(g.scores.supe[2][1],handContract?70:60);
     assert.match(g.summary.details,/Betl failed.*ended immediately/i);
-    assert.throws(()=>playCard(g,1,'CA'),/Not your turn|Not in playing|phase|Only|Cannot/i);
+    assert.throws(()=>playCard(g,1,'CA'),/action isn't available during summary/i);
     assert.throws(()=>advanceTrick(g),/No completed trick/);
   }
 });
