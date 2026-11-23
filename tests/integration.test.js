@@ -75,8 +75,8 @@ test('one shared table: five friends, settings, private hands and reconnection',
     assert.ok(peers[0].state.hands.some(c=>!peers[3].state.hands.includes(c)));
     assert.deepEqual(peers[4].state.hands,[]);
     const activeAt=seat=>peers.find(p=>p.state?.seat===seat);
-    activeAt(peers[0].state.turn).action('bid',{action:'bid',value:5});
-    await until(()=>peers[0].state.auction.bid===5);
+    activeAt(peers[0].state.turn).action('bid',{action:'bid',value:2});
+    await until(()=>peers[0].state.auction.bid===2);
     for(let n=0;n<2;n++){
       const turn=peers[0].state.turn;
       activeAt(turn).action('bid',{action:'pass'});

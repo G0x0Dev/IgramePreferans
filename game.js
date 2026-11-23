@@ -50,7 +50,7 @@ export function createGame(settings = {}) {
     hands: [[],[],[]], talon: [], discard: [],
     scores: { bula: [startBula,startBula,startBula], refe: [0,0,0], supe: [[0,0,0],[0,0,0],[0,0,0]] },
     auction: null, contract: null, follows: [null,null,null], followMessages: [null,null,null],
-    caller: null, doubler: null, doubleStage: 0, multiplier: 1,
+    caller: null, invited: null, doubler: null, doubleStage: 0, multiplier: 1,
     turn: null, firstBidder: null, trick: [], lastTrick: null,
     tricks: [0,0,0], trickNumber: 0, active: [],
     summary: null, log: [], finished: false
@@ -96,7 +96,7 @@ export function deal(g, deckOverride = null) {
   g.discard = [];
   g.contract = null;
   g.follows = [null,null,null]; g.followMessages = [null,null,null];
-  g.caller = null; g.doubler = null; g.doubleStage = 0; g.multiplier = 1;
+  g.caller = null; g.invited = null; g.doubler = null; g.doubleStage = 0; g.multiplier = 1;
   g.trick = []; g.lastTrick = null; g.tricks = [0,0,0]; g.trickNumber = 0;
   g.active = []; g.summary = null;
   g.firstBidder = next(g.dealer);
@@ -150,6 +150,7 @@ export function auctionAction(g, seat, action, value = null) {
       assert(!a.hand, 'Only a higher hand game can beat a hand declaration.');
       assert(isInt(value) && value >= 2 && value <= 7, 'Bid must be between 2 and 7.');
       assert(value > a.bid, 'Bid must be higher than the current bid.');
+      assert(a.highSeat !== null || value === 2, 'The first ordinary bid must be Pik (2), unless you declare Igra.');
       a.bid = value; a.highSeat = seat;
       log(g,`${player}: ${value} (${contractName(value)}).`); break;
     case 'mogu':
@@ -235,6 +236,7 @@ export function callPartner(g,seat,willCall) {
   if(willCall) {
     g.caller=seat;
     const third=otherSeats(g.contract.declarer).find(i=>i!==seat);
+    g.invited=third;
     g.follows[third]=true;
     g.followMessages[third]=null; // Invited back into play after declining.
     log(g,`${publicName(g,seat)}: Idemo zajedno (invite partner).`);
@@ -268,6 +270,7 @@ export function doubleAction(g,seat,action) {
   if(g.doubleStage===0) {
     assert(defenders.includes(seat),'Only defenders may give kontra.');
     if(action==='kontra') {
+      assert(seat!==g.invited, 'An invited partner can play tricks but cannot give Kontra or earn defensive points.');
       assert(g.follows[seat]===true, 'Only a participating defender may give kontra.');
       g.doubler=seat; g.multiplier=2; g.doubleStage=1; g.turn=dec;
       g.follows= [true,true,true];
@@ -398,7 +401,7 @@ export function viewFor(g,seat,roomCode) {
     talonCount:g.talon.length, talon:g.phase==='talon' ? [...g.talon] : [],
     auction:g.auction ? {...g.auction} : null,
     contract:g.contract?{...g.contract}:null,
-    follows:g.follows,followMessages:g.followMessages,caller:g.caller,doubler:g.doubler,doubleStage:g.doubleStage,multiplier:g.multiplier,
+    follows:g.follows,followMessages:g.followMessages,caller:g.caller,invited:g.invited,doubler:g.doubler,doubleStage:g.doubleStage,multiplier:g.multiplier,
     turn:g.turn,firstBidder:g.firstBidder,trick:g.trick,lastTrick:g.lastTrick,
     tricks:g.tricks,trickNumber:g.trickNumber,active:g.active,
     legal:own ? legalCards(g,seat):[],summary:g.summary,finished:g.finished,
