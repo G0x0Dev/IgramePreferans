@@ -64,9 +64,10 @@ test('ordinary bids must advance Pik → Karo → Herc → Tref → Betl → San
   assert.throws(()=>auctionAction(g,0,'bid',5),/next ordinary bid must be Karo/i);
   assert.equal(g.auction.bid,2);
   auctionAction(g,0,'bid',3); // Karo
-  assert.throws(()=>auctionAction(g,1,'bid',6),/already passed/i);
-  // Continue using the remaining two bidders to check every step.
-  auctionAction(g,1,'pass');
+  assert.equal(g.auction.bid,3);
+  assert.throws(()=>auctionAction(g,2,'bid',6),/next ordinary bid must be Herc/i);
+  auctionAction(g,2,'bid',4); // Herc
+  assert.equal(g.auction.bid,4);
 });
 test('sequential raising and Mogu priority retain their normal rules',()=>{
   const g=game();
