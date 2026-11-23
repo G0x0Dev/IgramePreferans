@@ -51,11 +51,14 @@
   const contractName = (v,hand=false) => `${hand?'Igra-':''}${CONTRACTS.find(c=>c.v===v)?.n||'?'}`;
   const seatLabel = i => i===state.seat?'You':nameOf(i);
   const SESSION_KEY='pref3:friends';
+  const SOLO_KEY='pref3:solo';
+  const MODE_KEY='pref3:lastMode';
   const HISTORY_KEY='pref3:matchHistory';
   let historyRestoreTried=false;
-  function rememberSession(data) {
-    session={token:data.token};
-    localStorage.setItem(SESSION_KEY,JSON.stringify(session));
+  function rememberSession(data,mode='friends') {
+    session={token:data.token,mode};
+    localStorage.setItem(mode==='solo'?SOLO_KEY:SESSION_KEY,JSON.stringify(session));
+    localStorage.setItem(MODE_KEY,mode);
     history.replaceState(null,'',location.pathname);
   }
   function toast(message) {
@@ -68,28 +71,38 @@
     socket.emit(event,payload,result=>{
       working=false;
       if(!result?.ok){sayError(result?.error||'Could not join the table.');callback?.(false);return;}
-      alertText='';rememberSession(result);callback?.(true);render();
+      alertText='';rememberSession(result,event==='joinSolo'?'solo':'friends');callback?.(true);render();
     });
   }
-  function reconnect() {
-    let saved=session;
-    if(!saved){try{saved=JSON.parse(localStorage.getItem(SESSION_KEY));}catch{}}
+  function reconnect(mode=null) {
+    const selectedMode=mode||session?.mode||localStorage.getItem(MODE_KEY)||'friends';
+    const key=selectedMode==='solo'?SOLO_KEY:SESSION_KEY;
+    let saved=selectedMode===session?.mode?session:null;
+    if(!saved){try{saved=JSON.parse(localStorage.getItem(key)||'null');}catch{}}
     if(!saved?.token)return;
-    socket.emit('joinTable',{token:saved.token},answer=>{
-      if(answer?.ok){rememberSession(answer);alertText='';render();}
+    const event=selectedMode==='solo'?'joinSolo':'joinTable';
+    socket.emit(event,{token:saved.token},answer=>{
+      if(answer?.ok){rememberSession(answer,selectedMode);alertText='';render();}
       else {
-        state=null;session=null;localStorage.removeItem(SESSION_KEY);
-        alertText='Your previous session is no longer available. Enter your name to join the shared table.';render();
+        state=null;session=null;localStorage.removeItem(key);localStorage.removeItem(MODE_KEY);
+        alertText=selectedMode==='solo'?'Your practice session expired. Start a new solo game.':
+          'Your previous session is no longer available. Enter your name to join the shared table.';
+        render();
       }
     });
   }
   socket.on('connect',()=>{connected=true;reconnect();render();});
   socket.on('disconnect',()=>{connected=false;render();});
-  socket.on('leftTable',()=>{state=null;session=null;localStorage.removeItem(SESSION_KEY);render();});
+  socket.on('leftTable',data=>{
+    const mode=data?.mode||session?.mode||state?.mode||'friends';
+    localStorage.removeItem(mode==='solo'?SOLO_KEY:SESSION_KEY);
+    if(localStorage.getItem(MODE_KEY)===mode)localStorage.removeItem(MODE_KEY);
+    state=null;session=null;render();
+  });
   socket.on('state',g=>{
     state=g;selected=selected.filter(c=>g.hands.includes(c));
-    if(g.history?.length){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(g.history));}catch{}}
-    else if(g.seat!==null && !historyRestoreTried){
+    if(g.mode!=='solo'&&g.history?.length){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(g.history));}catch{}}
+    else if(g.mode!=='solo'&&g.seat!==null && !historyRestoreTried){
       historyRestoreTried=true;
       try{
         const saved=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');
@@ -139,7 +152,8 @@
   function header() {
     return `<header class="topbar"><div class="brand"><span class="brandmark">♠</span><div><h1>Preferans</h1><small>Private card table</small></div></div>
     <div class="top-actions"><span class="pill"><i class="online-dot ${connected?'':'off'}"></i>${connected?'Connected':'Reconnecting'}</span>
-    ${state?button('Copy table link','share',{variant:'small'}):''}</div></header>`;
+    ${state?.mode==='solo'?button('Back to friends','exitSolo',{variant:'small'}):state?button('Copy table link','share',{variant:'small'}):''}
+    ${state?.mode==='friends'&&['lobby','summary'].includes(state.phase)?button('Solo practice','startSolo',{variant:'small subtle'}):''}</div></header>`;
   }
   function welcome() {
     return `<div class="app">${header()}<section class="welcome">
@@ -150,10 +164,18 @@
       ${alertText?`<div class="warning">${esc(alertText)}</div>`:''}
       <form id="join-form"><label class="field-label" for="player-name">Your name</label><input class="text-field" name="name" id="player-name" maxlength="24" autocomplete="nickname" required placeholder="Enter your name" value="${esc(localStorage.getItem('pref3:lastName')||'')}" />
       <button class="button primary large" type="submit" ${!connected||working?'disabled':''}>Join our table</button></form>
+      <div class="line-or">or</div>
+      <button class="button primary large practice-entry" data-action="startSolo" ${!connected||working?'disabled':''}>Play solo vs 2 computers</button>
+      <p class="muted-note">Solo practice uses a private session and does not change your friends' game or all-time scores.</p>
       </div>
       </section></div>`;
   }
   function matchHistory() {
+    if(state.mode==='solo')return `<section class="panel panel-pad match-history">
+      <span class="eyebrow">Training only</span><h3 class="side-title">Practice game</h3>
+      <p class="muted-note">Your match score is shown above. Solo results do not affect your five-friend leaderboard or saved match history.</p>
+      ${button('Restart practice','restartSolo',{variant:'small subtle'})}
+    </section>`;
     const rows=state.leaderboard||[],games=state.history||[];
     return `<section class="panel panel-pad match-history"><span class="eyebrow">Across all finished matches</span>
       <h3 class="side-title">Friends' standings</h3>
@@ -181,6 +203,21 @@
     return state.canUndo ? `<div class="undo-trigger">${button('Undo my last card · ask both players','requestUndo',{variant:'small subtle'})}<span class="muted-note">Available briefly after your last play. Both opponents must approve.</span></div>`:'';
   }
   function lobby() {
+    if(state.mode==='solo')return `<div class="app">${header()}<main class="lobby">
+      <div class="lobby-hero"><span class="eyebrow">Solo practice</span><h2>You vs two computers</h2>
+      <p>The computer players will bid, defend and play their cards automatically. This session is separate from your friends' table.</p></div>
+      <div class="lobby-seats">${state.players.map((p,i)=>`<div class="lobby-seat"><div class="avatar">${i===0?'♠':'🤖'}</div>
+      <strong>${esc(p.name)}</strong><small>${i===0?'You':'Computer opponent'}</small></div>`).join('')}</div>
+      <section class="panel panel-pad" style="margin-top:23px"><span class="eyebrow">Practice settings</span>
+      <h3 class="side-title">Choose bula & refe</h3>
+      <div class="lobby-settings"><div><label for="start-bula">Bula (50–120)</label>
+      <select id="start-bula" data-settings>${Array.from({length:8},(_,i)=>50+i*10).map(v=>`<option ${state.settings.startBula===v?'selected':''} value="${v}">${v} bula</option>`).join('')}</select></div>
+      <div><label for="max-refe">Refe (2–4)</label><select id="max-refe" data-settings>
+      ${[2,3,4].map(v=>`<option ${state.settings.maxRefe===v?'selected':''} value="${v}">${v} per player</option>`).join('')}</select></div></div></section>
+      <div class="lobby-foot"><div class="action-row" style="justify-content:center">
+      ${button('Deal cards · Start practice','start',{variant:'primary large'})}
+      ${button('Back to friends','exitSolo',{variant:'subtle'})}</div></div>
+      </main></div>`;
     const playerCount=state.players.filter(Boolean).length;
     const isHost=state.seat!==null;
     const waiting=state.members.filter(m=>m.seat===null);
@@ -286,7 +323,7 @@
       if(x?.kind==='played') body+=`<div class="result-grid">${s.players.map((p,i)=>`<div class="result-item"><strong>${esc(p?.name)}</strong><span>Tricks · ${x.tricks[i]}</span><span>Bula ${x.scoreChanges[i]>=0?'+':''}${x.scoreChanges[i]}</span><b class="${x.scoreChanges[i]<0?'good':x.scoreChanges[i]>0?'bad':''}">Supa +${x.supaChanges[i]}</b></div>`).join('')}</div>`;
       if(s.finished) {
         const standings=s.finalScores.map((score,i)=>({i,score})).sort((a,b)=>a.score-b.score);
-        body+=`<div class="winning-banner">Match finished! ${esc(nameOf(standings[0].i))} has the lowest final score (${standings[0].score}).</div><div class="action-row" style="margin-top:17px">${button('Set up next match','newMatch',{variant:'primary large'})}</div>`;
+        body+=`<div class="winning-banner">Match finished! ${esc(nameOf(standings[0].i))} has the lowest final score (${standings[0].score}).</div><div class="action-row" style="margin-top:17px">${button(s.mode==='solo'?'Play a new practice match':'Set up next match','newMatch',{variant:'primary large'})}</div>`;
       } else body+=s.seat===null?'<p class="muted-note">Waiting for the players to deal the next round.</p>':button('Deal next round','nextRound',{variant:'primary large'});
     }
     return `<div class="actions">${s.undoRequest?undoBanner():body}${!s.undoRequest?undoBanner():''}</div>`;
@@ -304,7 +341,7 @@
       ${g.scores.supe.map((row,i)=>`<tr><td>${esc(nameOf(i).slice(0,11))}</td>${row.map((n,j)=>`<td>${i===j?'—':n}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
       <div class="panel panel-pad"><span class="eyebrow">Table history</span><h3 class="side-title">Recent actions</h3><ul class="log">${[...g.log].reverse().map(s=>`<li>${esc(s)}</li>`).join('')||'<li>Waiting for the first deal.</li>'}</ul></div>
       <div class="panel panel-pad rules-link"><span class="eyebrow">Playing rules</span><h3 class="side-title">Need a refresher?</h3>
-        This game follows the <a href="https://www.preferansklub.com/pravila1.htm" target="_blank" rel="noopener noreferrer">Preferans Klub rules</a>, including Mogu, Betl, Sans, Kontra, and the bula/supa scorecard. The app is for three humans; no bots are needed.
+        This game follows the <a href="https://www.preferansklub.com/pravila1.htm" target="_blank" rel="noopener noreferrer">Preferans Klub rules</a>, including Mogu, Betl, Sans, Kontra, and the bula/supa scorecard. Play the five-friend table online, or use solo practice against two computer opponents.
       </div>${matchHistory()}</aside>`;
   }
   function gameScreen() {
@@ -323,6 +360,27 @@
     if(!connected){toast('Connection lost — reconnecting.');return;}
     const send=(event,data={})=>socket.emit(event,data);
     switch(a){
+      case 'startSolo':{
+        const name=state?.myName||$('#player-name')?.value?.trim()||localStorage.getItem('pref3:lastName')||'Player';
+        if(name.length<1||name.length>24){sayError('Enter a name (1–24 characters).');return;}
+        localStorage.setItem('pref3:lastName',name);
+        emitAck('joinSolo',{name});return;
+      }
+      case 'exitSolo':{
+        socket.emit('exitSolo',{},answer=>{
+          if(!answer?.ok){sayError(answer?.error||'Could not exit practice.');return;}
+          localStorage.removeItem(SOLO_KEY);
+          session=null;state=null;
+          localStorage.setItem(MODE_KEY,'friends');
+          reconnect('friends');render();
+        });
+        return;
+      }
+      case 'restartSolo':{
+        if(!confirm('Restart practice? Current cards and practice scores will reset.'))return;
+        socket.emit('restartSolo',{},answer=>{if(!answer?.ok)sayError(answer?.error||'Cannot restart practice.');});
+        return;
+      }
       case 'share':{
         const url=`${location.origin}/`;
         if(navigator.clipboard?.writeText)navigator.clipboard.writeText(url).then(()=>toast('Invitation link copied!')).catch(()=>window.prompt('Copy this invitation link:',url));
