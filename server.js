@@ -55,6 +55,7 @@ function reply(client,id,data){
 }
 function sendState(room){
   room.updated=Date.now();
+  if(room.game.finished && !room.archiveTimer && !room.undoRequest && room.matchId && !room.history.some(h=>h.id===room.matchId))scheduleArchive(room);
   const members=room.members.map(m=>({id:m.id,name:m.name,online:m.online,seat:m.seat}));
   for(const member of room.members){
     const view=viewFor(room.game,member.seat,room.code);
