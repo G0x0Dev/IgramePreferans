@@ -20,8 +20,29 @@ const isInt = n => Number.isInteger(n);
 const suit = c => c[0];
 const rank = c => RANKS.indexOf(c.slice(1));
 const contractName = (v, hand = false) => `${hand ? 'Igra-' : ''}${CONTRACTS.find(x => x.value === v)?.name || '?'}`;
-const cmpCard = (a,b) => SUITS.indexOf(a[0])-SUITS.indexOf(b[0]) || rank(a)-rank(b);
-const sortHand = hand => hand.sort(cmpCard);
+// Keep rank order within each suit, but spread suits and alternate red/black
+// wherever the counts allow. This is display order only: it never affects rules.
+export function sortHand(hand) {
+  const buckets = new Map(SUITS.map(s => [s, hand.filter(c=>suit(c)===s).sort((a,b)=>rank(a)-rank(b))]));
+  const result=[];
+  const color = s => s==='D'||s==='H' ? 'red' : 'black';
+  let lastSuit=null, lastColor=null;
+  while(result.length<hand.length){
+    const available=SUITS.filter(s=>buckets.get(s).length);
+    const colors=[...new Set(available.map(color))];
+    const other=colors.filter(c=>c!==lastColor);
+    const desired=other.length ? other.sort((a,b)=>
+      available.filter(s=>color(s)===b).reduce((n,s)=>n+buckets.get(s).length,0)-
+      available.filter(s=>color(s)===a).reduce((n,s)=>n+buckets.get(s).length,0))[0] : lastColor;
+    const matching=available.filter(s=>color(s)===desired);
+    const choices=matching.filter(s=>s!==lastSuit);
+    const nextSuit=(choices.length?choices:matching).sort((a,b)=>buckets.get(b).length-buckets.get(a).length || SUITS.indexOf(a)-SUITS.indexOf(b))[0];
+    result.push(buckets.get(nextSuit).shift());
+    lastSuit=nextSuit;lastColor=color(nextSuit);
+  }
+  hand.splice(0,hand.length,...result);
+  return hand;
+}
 
 export function makeDeck() { return SUITS.flatMap(s => RANKS.map(r => s + r)); }
 export function shuffle(deck) {
@@ -32,8 +53,8 @@ export function shuffle(deck) {
   return cards;
 }
 export function createGame(settings = {}) {
-  const startBula = [10, 25, 50, 100].includes(+settings.startBula) ? +settings.startBula : 100;
-  const maxRefe = [0,1,2,3,4,5].includes(+settings.maxRefe) ? +settings.maxRefe : 2;
+  const startBula = Number.isInteger(+settings.startBula) && +settings.startBula >= 50 && +settings.startBula <= 120 ? +settings.startBula : 100;
+  const maxRefe = [2,3,4].includes(+settings.maxRefe) ? +settings.maxRefe : 2;
   return {
     phase: 'lobby', settings: { startBula, maxRefe },
     players: [null, null, null], dealer: 2, round: 0,
@@ -169,7 +190,7 @@ export function discard(g,seat,cards) {
   assertTurn(g,seat,'discard');
   assert(Array.isArray(cards) && cards.length===2 && cards[0]!==cards[1], 'Select exactly two different cards.');
   assert(cards.every(c=>g.hands[seat].includes(c)), 'You cannot discard a card you do not hold.');
-  g.hands[seat] = g.hands[seat].filter(c=>!cards.includes(c));
+  g.hands[seat] = sortHand(g.hands[seat].filter(c=>!cards.includes(c)));
   g.discard = [...cards];
   g.phase = 'contract';
   log(g,`${publicName(g,seat)} set aside two cards face down.`);
@@ -304,6 +325,7 @@ export function playCard(g,seat,card) {
   assertTurn(g,seat,'playing');
   assert(legalCards(g,seat).includes(card),'Illegal card. Follow suit, or trump if void.');
   g.hands[seat].splice(g.hands[seat].indexOf(card),1);
+  sortHand(g.hands[seat]);
   g.trick.push({seat,card});
   if(g.trick.length===g.active.length) {
     const winner=winningSeat(g.trick,g.contract.trump);

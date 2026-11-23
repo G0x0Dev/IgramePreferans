@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  makeDeck,shuffle,createGame,deal,auctionAction,takeTalon,discard,declare,
+  makeDeck,shuffle,sortHand,createGame,deal,auctionAction,takeTalon,discard,declare,
   follow,callPartner,doubleAction,legalCards,winningSeat,playCard,advanceTrick,
   finalScores,viewFor
 } from '../game.js';
@@ -188,17 +188,18 @@ test('Dođem chooses play and invalid follow choices are rejected',()=>{
   callPartner(g,first,true);
   assert.equal(g.followMessages[[0,1,2].find(i=>i!==first&&i!==g.contract.declarer)],null);
 });
-test('regular Pik without kontra produces refe, unless max disabled',()=>{
+test('regular Pik without kontra produces refe, unless the refe limit is reached',()=>{
   const g=game();winBid(g,2);
   follow(g,g.turn,true);follow(g,g.turn,true);
   doubleAction(g,g.turn,'ok'); doubleAction(g,g.turn,'ok');
   assert.equal(g.phase,'summary');
   assert.equal(g.scores.refe[1],1);
-  const h=game({maxRefe:0});winBid(h,2);
+  const h=game({maxRefe:2}); h.scores.refe[1]=2;winBid(h,2);
   follow(h,h.turn,true);follow(h,h.turn,true);
   doubleAction(h,h.turn,'ok');doubleAction(h,h.turn,'ok');
   assert.equal(h.phase,'summary');
-  assert.equal(h.scores.bula[1],96);
+  assert.equal(h.scores.bula[1],92);
+  assert.equal(h.scores.refe[1],1);
 });
 test('Sans always opens through declarer (seat +2), and hand contracts add one point',()=>{
   const g=game();
@@ -239,4 +240,34 @@ test('complete 10-trick hand with strictly legal actions, score sum remains cohe
   assert.equal(g.tricks.reduce((a,b)=>a+b,0),10);
   assert.deepEqual(g.hands.map(h=>h.length),[0,0,0]);
   assert.deepEqual(finalScores(g).reduce((a,b)=>a+b,0),g.scores.bula.reduce((a,b)=>a+b,0)*10);
+});
+
+test('bula range 50–120 and refe choices 2–4 with default values',()=>{
+  assert.deepEqual(createGame().settings,{startBula:100,maxRefe:2});
+  assert.deepEqual(createGame({startBula:50,maxRefe:4}).settings,{startBula:50,maxRefe:4});
+  assert.deepEqual(createGame({startBula:120,maxRefe:3}).settings,{startBula:120,maxRefe:3});
+  assert.deepEqual(createGame({startBula:49,maxRefe:5}).settings,{startBula:100,maxRefe:2});
+  assert.deepEqual(createGame({startBula:121,maxRefe:1}).settings,{startBula:100,maxRefe:2});
+});
+test('card order alternates red and black and preserves ascending rank within each suit',()=>{
+  const hand=['S7','SA','S9','C8','CK','D7','DA','D9','H8','HK'];
+  sortHand(hand);
+  assert.equal(hand.length,10);
+  assert.deepEqual(new Set(hand),new Set(['S7','SA','S9','C8','CK','D7','DA','D9','H8','HK']));
+  const color=c=>['H','D'].includes(c[0]);
+  for(let i=1;i<hand.length;i++)assert.notEqual(color(hand[i]),color(hand[i-1]));
+  for(const suit of 'SDHC'){
+    const cards=hand.filter(c=>c[0]===suit);
+    assert.deepEqual(cards,[...cards].sort((a,b)=>['7','8','9','10','J','Q','K','A'].indexOf(a.slice(1))-['7','8','9','10','J','Q','K','A'].indexOf(b.slice(1))));
+  }
+});
+test('card sort minimizes same-color adjacency when hand has an imbalance',()=>{
+  const hand=['S7','S8','S9','S10','C7','C8','C9','C10','D7','H7'];
+  sortHand(hand);
+  const color=c=>['D','H'].includes(c[0]);
+  const changes=hand.slice(1).filter((c,i)=>color(c)!==color(hand[i])).length;
+  assert.equal(changes,4); // Only two red cards: four alternations is optimal.
+  assert.equal(new Set(hand).size,10);
+  const monochrome=['S7','C7','S8','C8'];sortHand(monochrome);
+  assert.ok(monochrome.every((c,i)=>i===0||c[0]!==monochrome[i-1][0]));
 });
