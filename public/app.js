@@ -42,7 +42,6 @@
   const SUITS = {S:'♠',D:'♦',H:'♥',C:'♣'};
   const CONTRACTS = [{v:2,n:'Pik',s:'S'},{v:3,n:'Karo',s:'D'},{v:4,n:'Herc',s:'H'},{v:5,n:'Tref',s:'C'},{v:6,n:'Betl',s:null},{v:7,n:'Sans',s:null}];
   let state=null, session=null, selected=[], connected=false, working=false;
-  let inviteCode = new URLSearchParams(location.search).get('room')?.toUpperCase() || '';
   let alertText=''; let toastTimer;
   const esc = value => String(value??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
   const seats = i => (i+3)%3;
@@ -51,13 +50,11 @@
   const phaseTitle = {lobby:'Waiting for players',auction:'The auction',talon:'The talon',discard:'Discard two cards',contract:'Choose your contract',following:'Defenders decide',calling:'Invite a partner',doubles:'Kontra & raises',playing:'Trick-taking',trickReview:'Trick complete',summary:'Round results'};
   const contractName = (v,hand=false) => `${hand?'Igra-':''}${CONTRACTS.find(c=>c.v===v)?.n||'?'}`;
   const seatLabel = i => i===state.seat?'You':nameOf(i);
-  function sessionKey(code) {return 'pref3:' + code;}
+  const SESSION_KEY='pref3:friends';
   function rememberSession(data) {
-    session={code:data.code, token:data.token, seat:data.seat};
-    localStorage.setItem(sessionKey(data.code), JSON.stringify(session));
-    localStorage.setItem('pref3:lastRoom', data.code);
-    inviteCode=data.code;
-    history.replaceState(null,'',`/?room=${encodeURIComponent(data.code)}`);
+    session={token:data.token};
+    localStorage.setItem(SESSION_KEY,JSON.stringify(session));
+    history.replaceState(null,'',location.pathname);
   }
   function toast(message) {
     const node=$('#toast');node.textContent=message;node.classList.add('show');
@@ -68,23 +65,25 @@
     working=true;
     socket.emit(event,payload,result=>{
       working=false;
-      if(!result?.ok){sayError(result?.error||'Could not join room.');callback?.(false);return;}
+      if(!result?.ok){sayError(result?.error||'Could not join the table.');callback?.(false);return;}
       alertText='';rememberSession(result);callback?.(true);render();
     });
   }
   function reconnect() {
-    const code = session?.code || inviteCode || localStorage.getItem('pref3:lastRoom');
-    if(!code)return;
     let saved=session;
-    if(!saved) {try{saved=JSON.parse(localStorage.getItem(sessionKey(code)));}catch{}}
-    if(!saved?.token || !saved?.code)return;
-    socket.emit('joinRoom',{code:saved.code,token:saved.token},answer=>{
+    if(!saved){try{saved=JSON.parse(localStorage.getItem(SESSION_KEY));}catch{}}
+    if(!saved?.token)return;
+    socket.emit('joinTable',{token:saved.token},answer=>{
       if(answer?.ok){rememberSession(answer);alertText='';render();}
-      else {state=null;session=null;alertText='Previous room unavailable. Join a new table or enter a room code.';render();}
+      else {
+        state=null;session=null;localStorage.removeItem(SESSION_KEY);
+        alertText='Your previous session is no longer available. Enter your name to join the shared table.';render();
+      }
     });
   }
   socket.on('connect',()=>{connected=true;reconnect();render();});
   socket.on('disconnect',()=>{connected=false;render();});
+  socket.on('leftTable',()=>{state=null;session=null;localStorage.removeItem(SESSION_KEY);render();});
   socket.on('state',g=>{state=g;selected=selected.filter(c=>g.hands.includes(c));render();});
   socket.on('actionError',message=>sayError(message));
 
@@ -102,35 +101,40 @@
   function header() {
     return `<header class="topbar"><div class="brand"><span class="brandmark">♠</span><div><h1>Preferans</h1><small>Private card table</small></div></div>
     <div class="top-actions"><span class="pill"><i class="online-dot ${connected?'':'off'}"></i>${connected?'Connected':'Reconnecting'}</span>
-    ${state?`<span class="code-pill">${esc(state.roomCode)}</span>${button('Copy invite','share',{variant:'small'})}`:''}</div></header>`;
+    ${state?button('Copy table link','share',{variant:'small'}):''}</div></header>`;
   }
   function welcome() {
     return `<div class="app">${header()}<section class="welcome">
-      <div class="welcome-copy"><div class="overline">A classic game, a modern table</div><h2>Three players.<br>One <em>great game.</em></h2>
-      <p>Bring two friends to a private table for the traditional game of Preferans. Bid for the talon, choose your contract, and play every trick live in your browser.</p>
-      <div class="welcome-feature"><span class="feature">♠ 32-card deck</span><span class="feature">♣ Live multiplayer</span><span class="feature">♥ Private hands</span><span class="feature">♦ Automatic scoring</span></div></div>
-      <div class="form-box"><span class="eyebrow">Join the table</span><h3>Ready to play?</h3><p>Create a room to invite two friends, or enter their six-character invite code.</p>
+      <div class="welcome-copy"><div class="overline">Your friends' Preferans table</div><h2>One table.<br><em>Five friends.</em></h2>
+      <p>Use the same link every time. Three friends play each match, while up to two others can wait and watch public tricks. No room codes or room creation needed.</p>
+      <div class="welcome-feature"><span class="feature">♠ One shared table</span><span class="feature">♣ Three active players</span><span class="feature">♥ Two waiting places</span><span class="feature">♦ Automatic scoring</span></div></div>
+      <div class="form-box"><span class="eyebrow">Shared table</span><h3>Ready to play?</h3><p>Enter your name once. You’ll return to the same group when you open the site again on this device.</p>
       ${alertText?`<div class="warning">${esc(alertText)}</div>`:''}
       <form id="join-form"><label class="field-label" for="player-name">Your name</label><input class="text-field" name="name" id="player-name" maxlength="24" autocomplete="nickname" required placeholder="Enter your name" value="${esc(localStorage.getItem('pref3:lastName')||'')}" />
-      <label class="field-label" for="room-code">Room code <span class="text-muted">(optional)</span></label><input class="text-field" name="code" id="room-code" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="e.g. HJ7AK2" value="${esc(inviteCode)}" />
-      <button class="button primary large" type="submit" ${!connected||working?'disabled':''}>Join room</button></form>
-      <div class="line-or">or</div><button class="button" data-action="create" ${!connected||working?'disabled':''}>Create a new private room</button></div>
+      <button class="button primary large" type="submit" ${!connected||working?'disabled':''}>Join our table</button></form>
+      </div>
       </section></div>`;
   }
   function lobby() {
     const playerCount=state.players.filter(Boolean).length;
-    const isHost=state.seat===0;
+    const isHost=state.seat!==null;
+    const waiting=state.members.filter(m=>m.seat===null);
+    const canStart=playerCount===3 && state.players.every(p=>p?.online);
     return `<div class="app">${header()}<main class="lobby">
-      <div class="lobby-hero"><span class="eyebrow">Your private table</span><h2>Invite two friends.</h2>
-      <p>${playerCount} of 3 seats filled · Share the room code or invitation link.</p></div>
+      <div class="lobby-hero"><span class="eyebrow">One shared table</span><h2>Choose three players.</h2>
+      <p>${playerCount} of 3 playing seats · ${state.members.length} of ${state.friendLimit} friends joined. Everyone uses the same website link.</p></div>
       <div class="lobby-seats">${state.players.map((p,i)=>`<div class="lobby-seat"><div class="avatar">${esc(p?.name?.charAt(0)?.toUpperCase()||'?')}</div>
-      <strong>${esc(p?.name||'Open seat')}</strong><small>${p?`${i===state.seat?'You · ':''}${i===0?'Host':'Player'} · ${p.online?'Online':'Offline'}`:'Waiting for player…'}</small></div>`).join('')}</div>
-      <div class="copy-url"><span class="text-muted">Code:</span><code>${esc(state.roomCode)}</code>${button('Copy invite link','share',{variant:'small'})}</div>
-      <section class="panel panel-pad" style="margin-top:24px"><span class="eyebrow">Match options</span><h3 class="side-title">House settings</h3>
-      <div class="lobby-settings"><div><label for="start-bula">Starting bula per player</label><select id="start-bula" data-settings ${!isHost?'disabled':''}>${[10,25,50,100].map(v=>`<option ${state.settings.startBula===v?'selected':''} value="${v}">${v} bula</option>`).join('')}</select></div>
-      <div><label for="max-refe">Max active refe</label><select id="max-refe" data-settings ${!isHost?'disabled':''}>${[0,1,2,3,4,5].map(v=>`<option ${state.settings.maxRefe===v?'selected':''} value="${v}">${v} per player</option>`).join('')}</select></div></div>
-      <p class="muted-note">The default is 100 bula per player. The game ends when the combined bula reaches zero or below. Refe double the declarer's next played contract.</p></section>
-      <div class="lobby-foot">${isHost?button('Deal the first hand','start',{variant:'primary large',disabled:playerCount!==3}):'<p class="text-muted">The host will start the match when all three players are ready.</p>'}</div>
+      <strong>${esc(p?.name||'Open seat')}</strong><small>${p?`${i===state.seat?'You · ':''}${p.online?'Online':'Offline'}`:'Available to play'}</small>${p&&!p.online&&isHost?button('Free offline seat','removeOffline',{value:state.members.find(m=>m.seat===i)?.id,variant:'small subtle'}):''}</div>`).join('')}</div>
+      <div class="copy-url"><span class="text-muted">One link for everyone</span>${button('Copy table link','share',{variant:'small'})}</div>
+      <section class="panel panel-pad" style="margin-top:22px"><span class="eyebrow">Friends</span><h3 class="side-title">Waiting / next match</h3>
+      <div class="friends-list">${waiting.length?waiting.map(m=>`<span class="friend-tag">${esc(m.name)} <small>${m.online?'Online':'Offline'} · Waiting</small> ${!m.online&&isHost?button('Remove offline','removeOffline',{value:m.id,variant:'small subtle' }):''}</span>`).join(''):'<p class="muted-note">No one waiting right now.</p>'}</div>
+      <p class="muted-note">Three people play at a time. Players can choose to sit out before the deal so waiting friends can take a free seat.</p>
+      <div class="action-row">${isHost?button('Sit out this match','sitOut',{variant:'subtle'}):playerCount<3?button('Take an open seat','takeSeat',{variant:'primary'}):'<span class="text-muted">All playing seats are occupied. Ask a friend to sit out.</span>'}${button('Leave the group','leaveTable',{variant:'subtle'})}</div></section>
+            <section class="panel panel-pad" style="margin-top:24px"><span class="eyebrow">Before the deal</span><h3 class="side-title">Choose bula & refe</h3>
+      <div class="lobby-settings"><div><label for="start-bula">Bula (50–120)</label><select id="start-bula" data-settings ${!isHost?'disabled':''}>${Array.from({length:8},(_,i)=>50+i*10).map(v=>`<option ${state.settings.startBula===v?'selected':''} value="${v}">${v} bula</option>`).join('')}</select></div>
+      <div><label for="max-refe">Refe (2–4)</label><select id="max-refe" data-settings ${!isHost?'disabled':''}>${[2,3,4].map(v=>`<option ${state.settings.maxRefe===v?'selected':''} value="${v}">${v} per player</option>`).join('')}</select></div></div>
+      <p class="muted-note">Any seated player can choose values before starting. Defaults: 100 bula and 2 refe. The game ends when combined bula reaches zero or below.</p></section>
+      <div class="lobby-foot">${isHost?button('Start match · Deal the cards','start',{variant:'primary large',disabled:!canStart}):'<p class="text-muted">You are waiting. Take an open seat to play, or watch when the match begins.</p>'}</div>
       </main></div>`;
   }
   function playerPlace(i,pos) {
@@ -144,7 +148,7 @@
       ${!me&&state.handCounts[i]?`<div class="mini-backs"><span class="mini-back"></span><span class="mini-back"></span><span class="mini-back"></span><span class="mini-back"></span></div>`:''}</div>`;
   }
   function table() {
-    const me=state.seat, left=seats(me+2),right=seats(me+1);
+    const me=state.seat??0, left=seats(me+2),right=seats(me+1);
     const cards=state.trick.length?state.trick:state.phase==='trickReview'&&state.lastTrick?state.lastTrick.cards:[];
     const atSeat=seat=>cards.find(p=>p.seat===seat)?.card;
     const status=state.phase==='trickReview'&&state.lastTrick?`${esc(nameOf(state.lastTrick.winner))} takes trick ${state.lastTrick.number}`:
@@ -159,6 +163,7 @@
       <div class="table-note">${status}${state.multiplier>1?` · ×${state.multiplier} stakes`:''}</div></div>`;
   }
   function hand() {
+    if(state.seat===null)return `<section class="my-hand-area"><div class="hand-head"><strong>Watching as ${esc(state.myName)}</strong></div><p class="muted-note">You can watch public tricks and scores. Players' private cards remain hidden.</p></section>`;
     const canPlay=state.phase==='playing'&&state.turn===state.seat;
     const canDiscard=state.phase==='discard'&&state.turn===state.seat;
     const valid=new Set(state.legal);
@@ -170,6 +175,7 @@
     return `<div class="button-group">${list.map(c=>button(`${hand?'Igra-':''}${c.n}`,action,{value:c.v,extra:icon(c)})).join('')}</div>`;
   }
   function actionPanel() {
+    if(state.seat===null && state.phase!=='summary')return `<div class="actions"><div class="actions-title">Waiting for the next match</div><div class="actions-subtitle">Enjoy watching! Three players are at the table. You can take a seat before the next match starts.</div></div>`;
     const mine=state.turn===state.seat, s=state;
     let body='';
     if(s.phase==='auction') {
@@ -215,8 +221,8 @@
       if(x?.kind==='played') body+=`<div class="result-grid">${s.players.map((p,i)=>`<div class="result-item"><strong>${esc(p?.name)}</strong><span>Tricks · ${x.tricks[i]}</span><span>Bula ${x.scoreChanges[i]>=0?'+':''}${x.scoreChanges[i]}</span><b class="${x.scoreChanges[i]<0?'good':x.scoreChanges[i]>0?'bad':''}">Supa +${x.supaChanges[i]}</b></div>`).join('')}</div>`;
       if(s.finished) {
         const standings=s.finalScores.map((score,i)=>({i,score})).sort((a,b)=>a.score-b.score);
-        body+=`<div class="winning-banner">Match finished! ${esc(nameOf(standings[0].i))} has the lowest final score (${standings[0].score}).</div><div class="action-row" style="margin-top:17px">${button('Create a new table','newTable',{variant:'primary large'})}</div>`;
-      } else body+=button('Deal next round','nextRound',{variant:'primary large'});
+        body+=`<div class="winning-banner">Match finished! ${esc(nameOf(standings[0].i))} has the lowest final score (${standings[0].score}).</div><div class="action-row" style="margin-top:17px">${button('Set up next match','newMatch',{variant:'primary large'})}</div>`;
+      } else body+=s.seat===null?'<p class="muted-note">Waiting for the players to deal the next round.</p>':button('Deal next round','nextRound',{variant:'primary large'});
     }
     return `<div class="actions">${body}</div>`;
   }
@@ -237,7 +243,7 @@
       </div></aside>`;
   }
   function gameScreen() {
-    const subtitle=state.turn===null?'Waiting for the next step':`${nameOf(state.turn)}${state.turn===state.seat?' (you)':''} to act`;
+    const subtitle=state.seat===null?'Watching · waiting to play':state.turn===null?'Waiting for the next step':`${nameOf(state.turn)}${state.turn===state.seat?' (you)':''} to act`;
     return `<div class="app">${header()}<div class="layout"><main class="main-col"><section class="panel">
       <div class="stage-header"><div><span class="eyebrow">Round ${state.round} · Dealer: ${esc(nameOf(state.dealer))}</span><h2>${phaseTitle[state.phase]}</h2><p>${esc(subtitle)}</p></div><span class="phase-tag">${state.contract?contractName(state.contract.value,state.contract.hand):'Bidding'}</span></div>
       ${table()}${hand()}${actionPanel()}</section>
@@ -253,20 +259,20 @@
     const send=(event,data={})=>socket.emit(event,data);
     switch(a){
       case 'share':{
-        const url=`${location.origin}/?room=${encodeURIComponent(state.roomCode)}`;
+        const url=`${location.origin}/`;
         if(navigator.clipboard?.writeText)navigator.clipboard.writeText(url).then(()=>toast('Invitation link copied!')).catch(()=>window.prompt('Copy this invitation link:',url));
         else window.prompt('Copy this invitation link:',url);
         return;
       }
-      case 'create':{
-        const name=($('#player-name')?.value||'').trim();
-        if(!name){sayError('Enter your name first.');$('#player-name')?.focus();return;}
-        localStorage.setItem('pref3:lastName',name);
-        emitAck('createRoom',{name,settings:{startBula:100,maxRefe:2}});return;
-      }
-      case 'newTable':{
-        const me=state.players[state.seat].name;
-        emitAck('createRoom',{name:me,settings:state.settings});return;
+      case 'takeSeat':case 'sitOut':case 'removeOffline':case 'newMatch':case 'leaveTable':{
+        if(a==='leaveTable'&&!confirm('Leave the shared group? You can rejoin later if a place is free.'))return;
+        socket.emit(a,a==='removeOffline'?{memberId:Number(value)}:{},answer=>{
+          if(!answer?.ok){sayError(answer?.error||'Could not update the table.');return;}
+          if(a==='leaveTable'){
+            state=null;session=null;localStorage.removeItem(SESSION_KEY);render();
+          }
+        });
+        return;
       }
       case 'start':send('start');return;
       case 'nextRound':selected=[];send('nextRound');return;
@@ -304,15 +310,13 @@
   root.addEventListener('submit',ev=>{
     if(ev.target.id!=='join-form')return;
     ev.preventDefault();
-    const form=new FormData(ev.target),name=String(form.get('name')||'').trim(),code=String(form.get('code')||'').trim().toUpperCase();
-    if(!code){sayError('Enter a six-character room code, or choose Create a new private room.');return;}
-    if(!/^[A-Z2-9]{6}$/.test(code)){sayError('A room code contains six characters.');return;}
+    const form=new FormData(ev.target),name=String(form.get('name')||'').trim();
+    if(!name){sayError('Enter your name.');return;}
     localStorage.setItem('pref3:lastName',name);
-    let saved;try{saved=JSON.parse(localStorage.getItem(sessionKey(code)));}catch{}
-    emitAck('joinRoom',{code,name,token:saved?.token});
+    emitAck('joinTable',{name});
   });
   root.addEventListener('change',ev=>{
-    if(!ev.target.matches('[data-settings]')||!state||state.seat!==0)return;
+    if(!ev.target.matches('[data-settings]')||!state||state.seat===null)return;
     const startBula=Number($('#start-bula')?.value),maxRefe=Number($('#max-refe')?.value);
     socket.emit('settings',{startBula,maxRefe});
   });
