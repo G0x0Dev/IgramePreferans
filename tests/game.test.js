@@ -249,25 +249,23 @@ test('bula range 50–120 and refe choices 2–4 with default values',()=>{
   assert.deepEqual(createGame({startBula:49,maxRefe:5}).settings,{startBula:100,maxRefe:2});
   assert.deepEqual(createGame({startBula:121,maxRefe:1}).settings,{startBula:100,maxRefe:2});
 });
-test('card order alternates red and black and preserves ascending rank within each suit',()=>{
-  const hand=['S7','SA','S9','C8','CK','D7','DA','D9','H8','HK'];
+test('cards are grouped by suit and ranked 7 to Ace',()=>{
+  const hand=['H10','D8','SA','C7','D7','H7','S7','CA','DK','HQ'];
   sortHand(hand);
-  assert.equal(hand.length,10);
-  assert.deepEqual(new Set(hand),new Set(['S7','SA','S9','C8','CK','D7','DA','D9','H8','HK']));
-  const color=c=>['H','D'].includes(c[0]);
-  for(let i=1;i<hand.length;i++)assert.notEqual(color(hand[i]),color(hand[i-1]));
-  for(const suit of 'SDHC'){
-    const cards=hand.filter(c=>c[0]===suit);
-    assert.deepEqual(cards,[...cards].sort((a,b)=>['7','8','9','10','J','Q','K','A'].indexOf(a.slice(1))-['7','8','9','10','J','Q','K','A'].indexOf(b.slice(1))));
-  }
+  assert.deepEqual(hand,['S7','SA','D7','D8','DK','C7','CA','H7','H10','HQ']);
+  const groups=[...new Set(hand.map(card=>card[0]))];
+  assert.deepEqual(groups,['S','D','C','H']);
+  assert.ok(Math.abs(groups.indexOf('D')-groups.indexOf('H'))>1);
 });
-test('card sort minimizes same-color adjacency when hand has an imbalance',()=>{
-  const hand=['S7','S8','S9','S10','C7','C8','C9','C10','D7','H7'];
+test('red suits stay separated by a black suit if clubs are missing',()=>{
+  const hand=['D8','H10','S9','D7','HA','S7'];
   sortHand(hand);
-  const color=c=>['D','H'].includes(c[0]);
-  const changes=hand.slice(1).filter((c,i)=>color(c)!==color(hand[i])).length;
-  assert.equal(changes,4); // Only two red cards: four alternations is optimal.
-  assert.equal(new Set(hand).size,10);
-  const monochrome=['S7','C7','S8','C8'];sortHand(monochrome);
-  assert.ok(monochrome.every((c,i)=>i===0||c[0]!==monochrome[i-1][0]));
+  assert.deepEqual(hand,['D7','D8','S7','S9','H10','HA']);
 });
+test('ranks stay ascending and no cards are lost even when a hand lacks black suits',()=>{
+  const hand=['H10','D8','HA','D7','D9','H7'];
+  sortHand(hand);
+  assert.deepEqual(hand,['D7','D8','D9','H7','H10','HA']);
+  assert.equal(new Set(hand).size,6);
+});
+
