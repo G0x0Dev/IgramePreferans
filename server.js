@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { randomBytes, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
-import { createGame,deal,auctionAction,takeTalon,discard,declare,follow,callPartner,doubleAction,playCard,advanceTrick,viewFor } from './game.js';
+import { createGame,deal,auctionAction,takeTalon,discard,declare,follow,callPartner,doubleAction,playCard,advanceTrick,viewFor,finalScores } from './game.js';
+import { loadHistory,saveHistory,mergeHistory,leaderboard } from './history.js';
 
 const publicDir=join(dirname(fileURLToPath(import.meta.url)),'public');
 const staticPaths=new Map([
@@ -14,7 +15,7 @@ const mime={'index.html':'text/html; charset=utf-8','app.js':'application/javasc
 const clients=new Map();
 const ROOM_CODE='FRIENDS';
 const FRIEND_LIMIT=5;
-const room={code:ROOM_CODE,game:createGame(),members:[],nextMemberId:1,updated:Date.now(),timer:null};
+const room={code:ROOM_CODE,game:createGame(),members:[],nextMemberId:1,updated:Date.now(),timer:null,archiveTimer:null,history:loadHistory(),undoCandidate:null,undoRequest:null,matchId:null};
 const MAX_MESSAGE=24_000;
 const GUID='258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 let socketCounter=0;
@@ -61,6 +62,10 @@ function sendState(room){
     view.memberId=member.id;
     view.myName=member.name;
     view.friendLimit=FRIEND_LIMIT;
+    view.history=room.history;
+    view.leaderboard=leaderboard(room.history);
+    view.undoRequest=room.undoRequest ? {seat:room.undoRequest.seat,card:room.undoRequest.card,approvals:room.undoRequest.approvals} : null;
+    view.canUndo=!!room.undoCandidate && !room.undoRequest && room.undoCandidate.seat===member.seat && Date.now()-room.undoCandidate.at<=30000 && ['playing','trickReview','summary'].includes(room.game.phase);
     for(const cid of member.connections)send(clients.get(cid),'state',view);
   }
 }
@@ -97,6 +102,7 @@ function guard(client,event,fn){
   try{
     const {room,seat}=session(client);
     if(seat===null)throw Error('You are waiting. Choose a seat before playing.');
+    if(room.undoRequest)throw Error('An undo request is awaiting both opponents.');
     fn(room.game,seat,room);
     room.updated=Date.now();
     if(process.env.DEBUG_GAME)console.log(room.code,seat,event,room.game.phase);
@@ -108,9 +114,94 @@ function settleReview(room){
   room.timer=setTimeout(()=>{
     room.timer=null;
     if(room.game.phase==='trickReview'){
-      try{advanceTrick(room.game);sendState(room);}catch(e){console.error(e);}
+      try{advanceTrick(room.game);if(room.game.finished)scheduleArchive(room);sendState(room);}catch(e){console.error(e);}
     }
   },1400);
+}
+const UNDO_WINDOW_MS=30000;
+function captureGame(g){
+  return structuredClone({...g,players:[null,null,null]});
+}
+function restoreGame(room,snapshot){
+  const players=room.game.players;
+  room.game={...structuredClone(snapshot),players};
+}
+function clearArchiveTimer(room){
+  if(room.archiveTimer)clearTimeout(room.archiveTimer);
+  room.archiveTimer=null;
+}
+function recordFinished(room){
+  if(!room.game.finished || !room.matchId || room.history.some(h=>h.id===room.matchId))return;
+  const record={
+    id:room.matchId,at:new Date().toISOString(),rounds:room.game.round,
+    players:room.game.players.map((p,i)=>({name:p.name,score:finalScores(room.game)[i]}))
+  };
+  room.history=mergeHistory(room.history,[record]);
+  saveHistory(room.history);
+  sendState(room);
+}
+function scheduleArchive(room){
+  if(!room.game.finished || room.archiveTimer)return;
+  clearArchiveTimer(room);
+  const remaining=room.undoCandidate ? Math.max(0,UNDO_WINDOW_MS-(Date.now()-room.undoCandidate.at)) : 0;
+  room.archiveTimer=setTimeout(()=>{
+    room.archiveTimer=null;
+    if(room.game.finished && !room.undoRequest)recordFinished(room);
+  },remaining+50);
+  room.archiveTimer.unref?.();
+}
+function resetUndo(room){
+  room.undoRequest=null;
+  room.undoCandidate=null;
+  clearArchiveTimer(room);
+}
+function handleUndo(client,event,data,id){
+  try{
+    const {seat}=session(client);
+    if(seat===null)throw Error('Only seated players can request or approve an undo.');
+    const candidate=room.undoCandidate;
+    if(event==='requestUndo'){
+      if(room.undoRequest)throw Error('An undo request is already pending.');
+      if(!candidate || candidate.seat!==seat)throw Error('You can only undo the card you played last.');
+      if(Date.now()-candidate.at>UNDO_WINDOW_MS)throw Error('Undo time expired (30 seconds).');
+      if(!['playing','trickReview','summary'].includes(room.game.phase))throw Error('The card can no longer be undone.');
+      const responders=[0,1,2].filter(i=>i!==seat);
+      if(responders.some(i=>!room.game.players[i]?.online))
+        throw Error('Both other seated players must be online to approve.');
+      if(room.timer){clearTimeout(room.timer);room.timer=null;}
+      clearArchiveTimer(room);
+      room.undoRequest={seat,card:candidate.card,approvals:[false,false,false],started:Date.now()};
+      room.undoRequest.approvals[seat]=true;
+      room.undoRequest.timer=setTimeout(()=>{
+        if(room.undoRequest){room.undoRequest=null; if(room.game.phase==='trickReview')settleReview(room);if(room.game.finished)scheduleArchive(room);sendState(room);}
+      },20000);
+      room.undoRequest.timer.unref?.();
+    }else if(event==='voteUndo'){
+      const pending=room.undoRequest;
+      if(!pending)throw Error('There is no undo request.');
+      if(seat===pending.seat)throw Error('Only the other two players can vote.');
+      if(typeof data.approve!=='boolean')throw Error('Choose approve or reject.');
+      if(pending.approvals[seat]!==false)throw Error('You already voted.');
+      if(!data.approve){
+        clearTimeout(pending.timer);
+        room.undoRequest=null;
+        if(room.game.phase==='trickReview')settleReview(room);
+        if(room.game.finished)scheduleArchive(room);
+      }else{
+        pending.approvals[seat]=true;
+        if(pending.approvals.every(Boolean)){
+          clearTimeout(pending.timer);
+          clearArchiveTimer(room);
+          restoreGame(room,room.undoCandidate.snapshot);
+          room.undoRequest=null;room.undoCandidate=null;
+          room.game.log.push(`All three players approved undo. ${room.game.players[pending.seat].name} can replay the card.`);
+          if(room.game.log.length>90)room.game.log.shift();
+        }
+      }
+    }
+    reply(client,id,{ok:true});
+    sendState(room);
+  }catch(e){reply(client,id,{ok:false,error:e.message});send(client,'actionError',e.message);}
 }
 function handleMessage(client,message){
   if(!message||typeof message!=='object'||typeof message.event!=='string')return;
@@ -136,13 +227,30 @@ function handleMessage(client,message){
     }catch(e){reply(client,id,{ok:false,error:e.message});}
     return;
   }
+  if(event==='requestUndo'||event==='voteUndo'){
+    handleUndo(client,event,data,id);return;
+  }
+  if(event==='restoreHistory'){
+    try{
+      const {seat}=session(client);
+      if(seat===null)throw Error('Only a seated friend can restore score backups.');
+      if(!Array.isArray(data.records)||data.records.length>200)throw Error('The backup must be a list of up to 200 games.');
+      room.history=mergeHistory(room.history,data.records);
+      saveHistory(room.history);
+      reply(client,id,{ok:true,count:room.history.length});sendState(room);
+    }catch(e){reply(client,id,{ok:false,error:e.message});}return;
+  }
   if(['takeSeat','sitOut','leaveTable','removeOffline','newMatch'].includes(event)){
     try{
       const {member}=session(client);
       if(event==='newMatch'){
         if(room.game.phase!=='summary'||!room.game.finished)throw Error('The current match has not finished.');
+        if(room.undoRequest)throw Error('Resolve undo voting before starting a new match.');
+        if(room.game.finished)recordFinished(room);
+        resetUndo(room);
         const settings=room.game.settings;
         room.game=createGame(settings);
+        room.matchId=null;
         for(const m of room.members)if(m.seat!==null)room.game.players[m.seat]=m;
       }else{
         if(room.game.phase!=='lobby')throw Error('Player changes are only allowed before a match starts.');
@@ -178,8 +286,8 @@ function handleMessage(client,message){
       g.settings=settings;
       g.scores.bula=[settings.startBula,settings.startBula,settings.startBula];
     });break;
-    case 'start':action((g)=>{if(!g.players.every(p=>p?.online))throw Error('Three online players must take seats before dealing.');deal(g);});break;
-    case 'nextRound':action(g=>{if(g.phase!=='summary')throw Error('This round has not ended.');deal(g);});break;
+    case 'start':action((g,seat,room)=>{if(!g.players.every(p=>p?.online))throw Error('Three online players must take seats before dealing.');resetUndo(room);room.matchId=randomBytes(16).toString('hex');deal(g);});break;
+    case 'nextRound':action((g,seat,room)=>{if(g.phase!=='summary')throw Error('This round has not ended.');resetUndo(room);deal(g);});break;
     case 'bid':action((g,seat)=>auctionAction(g,seat,data.action,data.value));break;
     case 'takeTalon':action((g,seat)=>takeTalon(g,seat));break;
     case 'discard':action((g,seat)=>discard(g,seat,data.cards));break;
@@ -187,7 +295,12 @@ function handleMessage(client,message){
     case 'follow':action((g,seat)=>follow(g,seat,data.choice ?? data.yes));break;
     case 'call':action((g,seat)=>callPartner(g,seat,data.yes));break;
     case 'double':action((g,seat)=>doubleAction(g,seat,data.action));break;
-    case 'play':action((g,seat,room)=>{playCard(g,seat,data.card);if(g.phase==='trickReview')settleReview(room);});break;
+    case 'play':action((g,seat,room)=>{
+      const snapshot=captureGame(g);
+      playCard(g,seat,data.card);
+      room.undoCandidate={seat,card:data.card,snapshot,at:Date.now()};
+      if(g.phase==='trickReview')settleReview(room);
+    });break;
   }
 }
 function readFrames(client,chunk){
