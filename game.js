@@ -151,6 +151,10 @@ export function auctionAction(g, seat, action, value = null) {
       assert(isInt(value) && value >= 2 && value <= 7, 'Bid must be between 2 and 7.');
       assert(value > a.bid, 'Bid must be higher than the current bid.');
       assert(a.highSeat !== null || value === 2, 'The first ordinary bid must be Pik (2), unless you declare Igra.');
+      // Ordinary bidding progresses through each contract in order. No skipping.
+      // A direct Igra hand declaration remains an independent exception.
+      assert(value === a.bid + 1,
+        `The next ordinary bid must be ${contractName(a.bid+1)} (${a.bid+1}); bidding cannot skip a contract.`);
       a.bid = value; a.highSeat = seat;
       log(g,`${player}: ${value} (${contractName(value)}).`); break;
     case 'mogu':
