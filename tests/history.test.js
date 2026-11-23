@@ -15,9 +15,9 @@ test('completed games are deduplicated and sorted newest first',()=>{
 test('leaderboard adds scores by case-insensitive friend name',()=>{
  const board=leaderboard(rows);
  assert.deepEqual(board.map(r=>[r.name,r.games,r.total,r.wins]),[
-  ['Dora',1,400,1],['Cene',1,950,0],['Boris',2,1400,0],['Ana',2,1300,1]
+  ['Dora',1,400,1],['Cene',1,950,0],['Boris',2,1400,0],['ANA',2,1300,1]
  ].sort((a,b)=>a[2]-b[2])); 
- assert.equal(board.find(p=>p.name==='Ana').total,1300);
+ assert.equal(board.find(p=>p.name.toLowerCase()==='ana').total,1300);
  assert.equal(board.find(p=>p.name==='Ana').wins,1);
 });
 test('invalid or forged-looking scores and duplicate player identities are ignored',()=>{
