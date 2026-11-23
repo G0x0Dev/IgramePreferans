@@ -16,7 +16,7 @@ const clients=new Map();
 const ROOM_CODE='FRIENDS';
 const FRIEND_LIMIT=5;
 const room={code:ROOM_CODE,game:createGame(),members:[],nextMemberId:1,updated:Date.now(),timer:null,archiveTimer:null,history:loadHistory(),undoCandidate:null,undoRequest:null,matchId:null};
-const MAX_MESSAGE=24_000;
+const MAX_MESSAGE=128_000; // allows restoring a full bounded JSON score archive
 const GUID='258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 let socketCounter=0;
 const nameValid=v=>typeof v==='string'&&v.trim().length>=1&&v.trim().length<=24;
