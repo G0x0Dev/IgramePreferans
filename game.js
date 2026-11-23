@@ -331,6 +331,11 @@ export function playCard(g,seat,card) {
     g.turn=null;
     g.phase='trickReview';
     log(g,`Trick ${g.trickNumber}: ${publicName(g,winner)} wins.`);
+    // Betl requires the declarer to take NO tricks. Their first winning trick
+    // loses Betl immediately, without waiting for the review timer or playing on.
+    if(g.contract.value===6 && winner===g.contract.declarer) {
+      finishRound(g,'Betl failed: the declarer won a trick. The hand ended immediately.');
+    }
   } else {
     g.turn=rotationFrom(next(seat),g.active);
   }
@@ -343,6 +348,11 @@ export function advanceTrick(g) {
   // the declarer can no longer reach the six required for success.
   // Stop immediately; do not credit any unplayed tricks to either side.
   const dec=g.contract.declarer;
+  // Backstop for a completed Betl trick restored from an older game state.
+  if(g.contract.value===6 && g.tricks[dec]>0) {
+    finishRound(g,'Betl failed: the declarer won a trick. The hand ended immediately.');
+    return;
+  }
   const defenderTricks=g.tricks.reduce((sum,count,seat)=>sum+(seat===dec?0:count),0);
   if(g.contract.value!==6 && defenderTricks>=5 && g.trickNumber<10) {
     finishRound(g,'Defenders reached five tricks; the round ended early. Only tricks actually taken are scored.');

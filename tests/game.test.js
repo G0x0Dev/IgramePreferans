@@ -416,11 +416,52 @@ test('Betl remains exempt from five-defender-trick early stop',()=>{
   g.lastTrick={winner:defenders[0],number:5,cards:[]};
   advanceTrick(g);
   assert.equal(g.phase,'playing','Betl continues even after five defensive tricks');
-  g.tricks[dec]=1;g.tricks[defenders[0]]=5;g.tricks[defenders[1]]=4;
+  // When the declarer remains trick-free, Betl continues through all ten.
+  g.tricks[dec]=0;g.tricks[defenders[0]]=5;g.tricks[defenders[1]]=5;
   g.trickNumber=10;g.phase='trickReview';
   g.lastTrick={winner:defenders[0],number:10,cards:[]};
   advanceTrick(g);
   assert.equal(g.phase,'summary');
-  assert.equal(g.scores.supe[defenders[0]][dec],70);
-  assert.equal(g.scores.supe[defenders[1]][dec],70);
+  assert.equal(g.scores.bula[dec],86,'successful Igra-Betl is 14 bula');
+  assert.equal(g.scores.supe[defenders[0]][dec],0);
+  assert.equal(g.scores.supe[defenders[1]][dec],0);
+});
+
+test('plain Betl and Igra-Betl fail immediately on declarer first captured trick',()=>{
+  for(const handContract of [false,true]){
+    const g=game();
+    if(handContract){
+      auctionAction(g,1,'hand',6);
+      auctionAction(g,2,'pass');
+      auctionAction(g,0,'pass');
+    }else{
+      winBid(g,6);
+    }
+    assert.equal(g.phase,'doubles');
+    doubleAction(g,g.turn,'ok');
+    doubleAction(g,g.turn,'ok');
+    assert.equal(g.phase,'playing');
+    assert.equal(g.contract.declarer,1);
+    // Three legal heart cards: Ace makes the declarer take the first trick.
+    // Everyone also keeps an unplayed club card.
+    g.hands=[['H7','C8'],['HA','CA'],['H9','C9']];
+    g.active=[0,1,2];g.turn=0;g.trick=[];g.tricks=[0,0,0];
+    g.trickNumber=0;
+    playCard(g,0,'H7');
+    assert.equal(g.phase,'playing');
+    playCard(g,1,'HA');
+    assert.equal(g.phase,'playing');
+    playCard(g,2,'H9');
+    assert.equal(g.phase,'summary','Betl must stop as soon as declarer wins');
+    assert.equal(g.tricks[1],1);
+    assert.equal(g.trickNumber,1);
+    assert.equal(g.lastTrick.winner,1);
+    assert.deepEqual(g.hands.map(h=>h.length),[1,1,1]);
+    assert.equal(g.scores.bula[1],handContract?114:112);
+    assert.equal(g.scores.supe[0][1],handContract?70:60);
+    assert.equal(g.scores.supe[2][1],handContract?70:60);
+    assert.match(g.summary.details,/Betl failed.*ended immediately/i);
+    assert.throws(()=>playCard(g,1,'CA'),/action isn't available during summary/i);
+    assert.throws(()=>advanceTrick(g),/No completed trick/);
+  }
 });
