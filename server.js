@@ -99,7 +99,7 @@ function removeMember(room,member){
     const connection=clients.get(id);
     if(!connection)continue;
     connection.room=null;connection.member=null;connection.seat=null;connection.token=null;
-    send(connection,'leftTable',{});
+    send(connection,'leftTable',{mode:'friends'});
   }
   member.connections.clear();member.online=false;member.seat=null;
 }
@@ -289,7 +289,7 @@ function handleMessage(client,message){
       if(old.botTimer)clearTimeout(old.botTimer);
       if(old.timer)clearTimeout(old.timer);
       reply(client,id,{ok:true});
-      send(client,'leftTable',{});
+      send(client,'leftTable',{mode:'solo'});
     }catch(e){reply(client,id,{ok:false,error:e.message});}
     return;
   }
