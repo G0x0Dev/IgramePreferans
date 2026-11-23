@@ -51,6 +51,8 @@
   const contractName = (v,hand=false) => `${hand?'Igra-':''}${CONTRACTS.find(c=>c.v===v)?.n||'?'}`;
   const seatLabel = i => i===state.seat?'You':nameOf(i);
   const SESSION_KEY='pref3:friends';
+  const HISTORY_KEY='pref3:matchHistory';
+  let historyRestoreTried=false;
   function rememberSession(data) {
     session={token:data.token};
     localStorage.setItem(SESSION_KEY,JSON.stringify(session));
@@ -84,7 +86,18 @@
   socket.on('connect',()=>{connected=true;reconnect();render();});
   socket.on('disconnect',()=>{connected=false;render();});
   socket.on('leftTable',()=>{state=null;session=null;localStorage.removeItem(SESSION_KEY);render();});
-  socket.on('state',g=>{state=g;selected=selected.filter(c=>g.hands.includes(c));render();});
+  socket.on('state',g=>{
+    state=g;selected=selected.filter(c=>g.hands.includes(c));
+    if(g.history?.length){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(g.history));}catch{}}
+    else if(g.seat!==null && !historyRestoreTried){
+      historyRestoreTried=true;
+      try{
+        const saved=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');
+        if(Array.isArray(saved)&&saved.length)socket.emit('restoreHistory',{records:saved},a=>{if(!a?.ok)toast('Could not restore saved scores.');});
+      }catch{}
+    }
+    render();
+  });
   socket.on('actionError',message=>sayError(message));
 
   const icon = c => `<span class="suit-symbol ${['D','H'].includes(c.s)?'red':''}">${c.s?SUITS[c.s]:''}</span>`;
@@ -140,6 +153,33 @@
       </div>
       </section></div>`;
   }
+  function matchHistory() {
+    const rows=state.leaderboard||[],games=state.history||[];
+    return `<section class="panel panel-pad match-history"><span class="eyebrow">Across all finished matches</span>
+      <h3 class="side-title">Friends' standings</h3>
+      ${rows.length?`<table class="score-table standings-table"><thead><tr><th>Place</th><th>Player</th><th>Games</th><th>Wins</th><th>Total score</th></tr></thead><tbody>
+      ${rows.map(p=>`<tr class="${p.position===1?'leader-row':''}"><td>#${p.position}</td><td>${esc(p.name)}</td><td>${p.games}</td><td>${p.wins}</td><td class="number">${p.total}</td></tr>`).join('')}</tbody></table>`
+      :'<p class="muted-note">No finished matches yet. Scores are added after a match ends.</p>'}
+      <p class="muted-note">Lower cumulative score leads. All finished matches are added by player name; games played and wins are shown because some friends may play more matches.</p>
+      <div class="action-row">${button('Download results backup','exportHistory',{variant:'small'})}${state.seat===null?'':button('Restore backup','importHistory',{variant:'small subtle'})}</div>
+      <h4 class="history-title">Finished games (${games.length})</h4>
+      ${games.length?`<div class="history-list">${games.slice(0,12).map((m,i)=>`<div class="history-match"><strong>Game ${games.length-i} · ${esc(new Date(m.at).toLocaleDateString())}</strong><small>${esc(m.players.map(p=>p.name+': '+p.score).join(' · '))}</small></div>`).join('')}</div>`:
+      '<p class="muted-note">Completed games will appear here and count toward the standings.</p>'}
+      ${games.length>12?'<p class="muted-note">Download the backup to see all saved games.</p>':''}
+      <p class="muted-note">For lasting storage on Render Free, keep a downloaded backup. Results also remain in this browser and can be restored if the server resets.</p>
+    </section>`;
+  }
+  function undoBanner() {
+    const u=state.undoRequest;
+    if(u){
+      const requester=esc(nameOf(u.seat)),myTurn=state.seat!==null&&state.seat!==u.seat;
+      const responded=myTurn&&u.approvals[state.seat];
+      return `<div class="undo-notice"><strong>Undo requested by ${requester}</strong><p>Replay the last card (${esc(u.card)})? Both other players must agree; play is paused.</p>
+      ${myTurn&&!responded?`<div class="action-row">${button('Approve undo','approveUndo',{variant:'primary'})}${button('Reject undo','rejectUndo',{variant:'subtle'})}</div>`:
+        responded?'<p>Approved — waiting for the other player.</p>':'<p>Waiting for both other players to decide.</p>'}</div>`;
+    }
+    return state.canUndo ? `<div class="undo-trigger">${button('Undo my last card · ask both players','requestUndo',{variant:'small subtle'})}<span class="muted-note">Available briefly after your last play. Both opponents must approve.</span></div>`:'';
+  }
   function lobby() {
     const playerCount=state.players.filter(Boolean).length;
     const isHost=state.seat!==null;
@@ -160,7 +200,7 @@
       <div><label for="max-refe">Refe (2–4)</label><select id="max-refe" data-settings ${!isHost?'disabled':''}>${[2,3,4].map(v=>`<option ${state.settings.maxRefe===v?'selected':''} value="${v}">${v} per player</option>`).join('')}</select></div></div>
       <p class="muted-note">Any seated player can choose values before starting. Defaults: 100 bula and 2 refe. The game ends when combined bula reaches zero or below.</p></section>
       <div class="lobby-foot">${isHost?button('Start match · Deal the cards','start',{variant:'primary large',disabled:!canStart}):'<p class="text-muted">You are waiting. Take an open seat to play, or watch when the match begins.</p>'}</div>
-      </main></div>`;
+      ${matchHistory()}</main></div>`;
   }
   function playerPlace(i,pos) {
     const p=state.players[i],turn=state.turn===i, me=i===state.seat;
@@ -200,7 +240,7 @@
     return `<div class="button-group">${list.map(c=>button(`${hand?'Igra-':''}${c.n}`,action,{value:c.v,extra:icon(c)})).join('')}</div>`;
   }
   function actionPanel() {
-    if(state.seat===null && state.phase!=='summary')return `<div class="actions"><div class="actions-title">Waiting for the next match</div><div class="actions-subtitle">Enjoy watching! Three players are at the table. You can take a seat before the next match starts.</div></div>`;
+    if(state.seat===null && state.phase!=='summary')return `<div class="actions"><div class="actions-title">Waiting for the next match</div><div class="actions-subtitle">Enjoy watching! Three players are at the table. You can take a seat before the next match starts.</div>${undoBanner()}</div>`;
     const mine=state.turn===state.seat, s=state;
     let body='';
     if(s.phase==='auction') {
@@ -235,7 +275,7 @@
       const stage=s.doubleStage;
       body=`<div class="actions-title">${mine?'Raise the stakes?':`${esc(nameOf(s.turn))} decides the stakes`}</div>
         <div class="actions-subtitle">Current multiplier ×${s.multiplier}. ${stage===0?'Only an eligible defender may give Kontra; invited players cannot. Plain Pik requires Kontra to be played.':'Each new counter doubles all bula and supa changes. The defender giving Kontra takes sole scoring responsibility.'}</div>
-        ${mine?`<div class="action-row">${button('Moze · Accept','doubleOk')}${stage===0&&(s.follows[s.seat]===false||s.invited===s.seat)?'':button(labels[stage],'doubleRaise',{variant:'primary'})}</div>`:''}`;
+        ${mine?`<div class="action-row">${button('Moze · Accept','doubleOk')}${s.availableDoubles?.includes(['kontra','rekontra','subkontra'][stage])?button(labels[stage],'doubleRaise',{variant:'primary'}):''}</div>`:''}`;
     } else if(s.phase==='playing') {
       body=`<div class="actions-title">${mine?'Your turn — play one card':`${esc(nameOf(s.turn))} is playing`}</div><div class="actions-subtitle">${mine?'You must follow the led suit if possible, or play trump if void in a trump contract. Only legal cards can be selected.':'Follow suit, trump when void in trump games, and capture tricks to meet your contract.'}</div>`;
     } else if(s.phase==='trickReview') {
@@ -249,15 +289,15 @@
         body+=`<div class="winning-banner">Match finished! ${esc(nameOf(standings[0].i))} has the lowest final score (${standings[0].score}).</div><div class="action-row" style="margin-top:17px">${button('Set up next match','newMatch',{variant:'primary large'})}</div>`;
       } else body+=s.seat===null?'<p class="muted-note">Waiting for the players to deal the next round.</p>':button('Deal next round','nextRound',{variant:'primary large'});
     }
-    return `<div class="actions">${body}</div>`;
+    return `<div class="actions">${s.undoRequest?undoBanner():body}${!s.undoRequest?undoBanner():''}</div>`;
   }
   function sidebar() {
     const g=state;
     return `<aside class="side-stack"><div class="panel panel-pad"><span class="eyebrow">Live scorecard</span><h3 class="side-title">The scores</h3>
       <table class="score-table"><thead><tr><th>Player</th><th>Bula</th><th>Refe</th><th>Final</th></tr></thead><tbody>
-      ${g.players.map((p,i)=>`<tr class="${i===g.seat?'own':''}"><td><i class="tiny-online ${p?.online?'':'off'}"></i>${esc(p?.name||'—')}</td>
+      ${g.players.map((p,i)=>`<tr class="${i===g.seat?'own':''} ${g.finalScores[i]===Math.min(...g.finalScores)?'leader-row':''}"><td><i class="tiny-online ${p?.online?'':'off'}"></i>${esc(p?.name||'—')} ${g.finalScores[i]===Math.min(...g.finalScores)?'★':''}</td>
       <td class="number ${g.scores.bula[i]<0?'good':''}">${g.scores.bula[i]}</td><td>${g.scores.refe[i]}</td><td class="number ${g.finalScores[i]<0?'good':'bad'}">${g.finalScores[i]}</td></tr>`).join('')}</tbody></table>
-      <div class="score-mini"><span>Combined bula remaining</span><strong>${g.scores.bula.reduce((n,x)=>n+x,0)}</strong></div>
+      <div class="score-mini"><span>Current leader: ${esc(g.players[g.finalScores.indexOf(Math.min(...g.finalScores))]?.name||'—')}</span><strong>${Math.min(...g.finalScores)}</strong></div><div class="score-mini"><span>Combined bula remaining</span><strong>${g.scores.bula.reduce((n,x)=>n+x,0)}</strong></div>
       <p class="score-key">Lower final scores are better. Final = 10 × bula + supe owed to opponents − supe earned against them. A refe doubles your next played contract.</p>
       <div class="soft-divider"></div><div class="group-label">Supa ledger · row scores against column</div>
       <table class="supa-ledger"><thead><tr><th>From \ Against</th>${g.players.map(p=>`<th>${esc((p?.name||'?').slice(0,8))}</th>`).join('')}</tr></thead><tbody>
@@ -265,7 +305,7 @@
       <div class="panel panel-pad"><span class="eyebrow">Table history</span><h3 class="side-title">Recent actions</h3><ul class="log">${[...g.log].reverse().map(s=>`<li>${esc(s)}</li>`).join('')||'<li>Waiting for the first deal.</li>'}</ul></div>
       <div class="panel panel-pad rules-link"><span class="eyebrow">Playing rules</span><h3 class="side-title">Need a refresher?</h3>
         This game follows the <a href="https://www.preferansklub.com/pravila1.htm" target="_blank" rel="noopener noreferrer">Preferans Klub rules</a>, including Mogu, Betl, Sans, Kontra, and the bula/supa scorecard. The app is for three humans; no bots are needed.
-      </div></aside>`;
+      </div>${matchHistory()}</aside>`;
   }
   function gameScreen() {
     const subtitle=state.seat===null?'Watching · waiting to play':state.turn===null?'Waiting for the next step':`${nameOf(state.turn)}${state.turn===state.seat?' (you)':''} to act`;
@@ -298,6 +338,32 @@
           }
         });
         return;
+      }
+      case 'requestUndo':case 'approveUndo':case 'rejectUndo':{
+        const event=a==='requestUndo'?'requestUndo':'voteUndo';
+        const payload=a==='requestUndo'?{}:{approve:a==='approveUndo'};
+        socket.emit(event,payload,answer=>{if(!answer?.ok)toast(answer?.error||'Undo could not be completed.');});
+        return;
+      }
+      case 'exportHistory':{
+        const records=state.history||[];
+        const json=JSON.stringify({version:1,records},null,2);
+        const blob=new Blob([json],{type:'application/json'});
+        const url=URL.createObjectURL(blob),a=document.createElement('a');
+        a.href=url;a.download='preferans-results-backup.json';a.click();
+        setTimeout(()=>URL.revokeObjectURL(url),1000);
+        return;
+      }
+      case 'importHistory':{
+        const file=document.createElement('input');file.type='file';file.accept='.json,application/json';
+        file.onchange=async()=>{
+          try{
+            const data=JSON.parse(await file.files[0].text()),records=Array.isArray(data)?data:data.records;
+            if(!Array.isArray(records)||records.length>200)throw Error('This backup is invalid or has too many games.');
+            socket.emit('restoreHistory',{records},answer=>{if(!answer?.ok)toast(answer?.error||'Backup could not be restored.');else toast('Saved games restored.');});
+          }catch(e){toast(e.message||'Invalid backup file.');}
+        };
+        file.click();return;
       }
       case 'start':send('start');return;
       case 'nextRound':selected=[];send('nextRound');return;

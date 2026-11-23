@@ -112,3 +112,78 @@ test('one shared table: five friends, settings, private hands and reconnection',
     proc.kill('SIGTERM');
   }
 });
+
+test('last-card undo requires approval from BOTH other players and restores turn and hand',async()=>{
+  const port=30000+randomInt(20000);
+  const proc=spawn(process.execPath,['server.js'],{cwd:process.cwd(),env:{...process.env,PORT:String(port)},stdio:'ignore'});
+  const peers=[];
+  try{
+    let up=false;
+    for(let i=0;i<100;i++){
+      try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){up=true;break;}}catch{}
+      await delay(20);
+    }
+    assert.ok(up,'server started');
+    for(let i=0;i<3;i++){
+      const peer=new Peer(`ws://127.0.0.1:${port}/ws`);peers.push(peer);
+      await peer.ready;assert.equal((await peer.request('joinTable',{name:'P'+i})).ok,true);
+    }
+    await until(()=>peers.every(p=>p.state?.members.length===3));
+    const playerAt=seat=>peers.find(p=>p.state?.seat===seat);
+    peers[0].action('start');
+    await until(()=>peers.every(p=>p.state?.phase==='auction'));
+    playerAt(peers[0].state.turn).action('bid',{action:'bid',value:2});
+    await until(()=>peers[0].state.auction?.highSeat!==null);
+    for(let n=0;n<2;n++){
+      const turn=peers[0].state.turn;
+      playerAt(turn).action('bid',{action:'pass'});
+      await until(()=>peers[0].state.auction.passed[turn]);
+    }
+    await until(()=>peers[0].state.phase==='talon');
+    const declarer=playerAt(peers[0].state.contract.declarer);
+    declarer.action('takeTalon');
+    await until(()=>peers[0].state.phase==='discard');
+    declarer.action('discard',{cards:declarer.state.hands.slice(0,2)});
+    await until(()=>peers[0].state.phase==='contract');
+    declarer.action('declare',{value:5});
+    await until(()=>peers[0].state.phase==='following');
+    for(let n=0;n<2;n++){
+      playerAt(peers[0].state.turn).action('follow',{choice:'dodjem'});
+      await until(()=>peers[0].state.phase==='doubles'||peers[0].state.follows.filter(Boolean).length===2);
+    }
+    await until(()=>peers[0].state.phase==='doubles');
+    for(let n=0;n<2;n++){
+      const turn=peers[0].state.turn;
+      playerAt(turn).action('double',{action:'ok'});
+      await until(()=>peers[0].state.phase==='playing'||peers[0].state.turn!==turn);
+    }
+    await until(()=>peers[0].state.phase==='playing');
+    const seat=peers[0].state.turn,author=playerAt(seat),before=[...author.state.hands];
+    const card=author.state.legal[0];
+    author.action('play',{card});
+    await until(()=>author.state?.canUndo===true);
+    assert.equal(author.state.hands.length,before.length-1);
+    assert.equal((await author.request('requestUndo')).ok,true);
+    await until(()=>peers.every(p=>p.state?.undoRequest?.seat===seat));
+    const voters=peers.filter(p=>p.state.seat!==seat);
+    assert.equal((await voters[0].request('voteUndo',{approve:true})).ok,true);
+    await until(()=>peers[0].state.undoRequest?.approvals[voters[0].state.seat]===true);
+    assert.equal(author.state.hands.includes(card),false,'first approval does not undo');
+    assert.equal((await voters[1].request('voteUndo',{approve:true})).ok,true);
+    await until(()=>peers.every(p=>p.state?.undoRequest===null));
+    assert.equal(author.state.turn,seat);
+    assert.deepEqual(author.state.hands,before,'hand fully restored after unanimous vote');
+    assert.equal(author.state.trick.length,0,'trick state restored');
+    author.action('play',{card});
+    await until(()=>author.state.canUndo===true);
+    assert.equal((await author.request('requestUndo')).ok,true);
+    await until(()=>peers[0].state.undoRequest!==null);
+    assert.equal((await voters[0].request('voteUndo',{approve:false})).ok,true);
+    await until(()=>peers[0].state.undoRequest===null);
+    assert.equal(author.state.hands.includes(card),false,'a reject leaves the last card played');
+    assert.equal(author.state.turn!==seat,true);
+  }finally{
+    for(const p of peers)try{p.close();}catch{}
+    proc.kill('SIGTERM');
+  }
+});
