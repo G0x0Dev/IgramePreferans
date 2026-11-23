@@ -20,3 +20,91 @@
 .lobby-seat .button{display:block;margin:10px auto 0;padding:6px 9px;font-size:10px}
 .lobby-foot .button{max-width:100%;white-space:normal}
 @media(max-width:560px){.friends-list{gap:6px}.friend-tag{font-size:11px}.lobby-seat .button{font-size:9px;padding:5px}}
+
+
+/* Playing cards v2 — paper finish, classic mirrored indices and elegant suits. */
+.playing-card{
+  width:76px;height:112px;padding:0;display:flex;flex-direction:column;justify-content:space-between;
+  border:1px solid #d5c9b1;border-radius:11px;overflow:hidden;position:relative;
+  color:#24313d;background:linear-gradient(145deg,#fffefa 0%,#fbf8ef 55%,#f0e8da 100%);
+  box-shadow:0 5px 0 #00000014,0 10px 20px #00000045,inset 0 1px 0 #ffffff;
+  isolation:isolate;
+}
+.playing-card::before{
+  content:"";position:absolute;inset:4px;z-index:0;border:1px solid #d7c9b780;
+  border-radius:7px;pointer-events:none;
+}
+.playing-card.red{color:#b93546}
+.playing-card.black{color:#26313b}
+.playing-card .card-corner{
+  position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;
+  align-self:flex-start;margin:7px 0 0 8px;font-family:Georgia,"Times New Roman",serif;
+  line-height:.88;font-weight:800;letter-spacing:-.035em;
+}
+.playing-card .card-corner b{font-size:20px;font-weight:800}
+.playing-card .card-corner small{font-size:17px;margin-top:3px;line-height:1}
+.playing-card .card-corner.mirrored{
+  align-self:flex-end;margin:0 8px 7px 0;transform:rotate(180deg);
+}
+.playing-card .card-center{
+  position:absolute;inset:17px 13px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:2px;pointer-events:none;
+}
+.playing-card .suit-big{
+  font-size:42px;line-height:1;padding:0;text-shadow:0 1px 1px #ffffffaa;
+}
+.playing-card .court-flourish{font-size:10px;line-height:1;opacity:.65;height:10px}
+.playing-card.selected{outline:3px solid #e6c179;outline-offset:1px}
+.playing-card[role="button"]:focus-visible{outline:3px solid #e8c07a;outline-offset:3px}
+.playing-card.tiny{
+  width:55px;height:81px;padding:0;border-radius:8px;
+}
+.playing-card.tiny .card-corner{margin:5px 0 0 6px}
+.playing-card.tiny .card-corner.mirrored{margin:0 6px 5px 0}
+.playing-card.tiny .card-corner b{font-size:15px}
+.playing-card.tiny .card-corner small{font-size:12px;margin-top:2px}
+.playing-card.tiny .suit-big{font-size:29px}
+.playing-card.tiny .card-center{inset:13px 9px}
+.playing-card.tiny .court-flourish{font-size:8px;height:7px}
+.playing-card.back{
+  display:grid;place-items:center;background:linear-gradient(135deg,#4d3233,#805450 50%,#402a31);
+  border:3px solid #e8d5b6;box-shadow:0 5px 14px #0007;
+}
+.playing-card.back::before{
+  content:"";inset:4px;border:1px solid #e8d5b6;border-radius:4px;
+  background:repeating-linear-gradient(45deg,#e1c79b1c 0 5px,#ffffff08 5px 10px);
+}
+.playing-card.back::after{display:none}
+.playing-card.back .back-emblem{
+  z-index:1;border:1px solid #e8d5b6;border-radius:50%;width:38px;height:38px;
+  display:grid;place-items:center;font-size:25px;color:#f6e5c8;
+}
+.playing-card.tiny.back .back-emblem{width:28px;height:28px;font-size:19px}
+.last-trick .playing-card{width:42px;height:58px;padding:0;border-radius:6px}
+.last-trick .playing-card .card-corner{margin:3px 0 0 4px}
+.last-trick .playing-card .card-corner.mirrored{margin:0 4px 3px 0}
+.last-trick .playing-card .card-corner b{font-size:11px}
+.last-trick .playing-card .card-corner small{font-size:9px;margin-top:1px}
+.last-trick .playing-card .suit-big{font-size:22px}
+.last-trick .playing-card .card-center{inset:8px}
+.last-trick .playing-card .court-flourish{display:none}
+.hand .playing-card:hover:not(.disabled){transform:translateY(-7px)}
+@media(max-width:1050px){
+  .playing-card{width:67px;height:100px}
+  .playing-card .suit-big{font-size:36px}
+  .playing-card .card-corner b{font-size:18px}
+  .playing-card .card-corner small{font-size:15px}
+}
+@media(max-width:560px){
+  .playing-card{width:60px;height:94px;border-radius:9px}
+  .playing-card .card-corner{margin:5px 0 0 6px}
+  .playing-card .card-corner.mirrored{margin:0 6px 5px 0}
+  .playing-card .card-corner b{font-size:16px}
+  .playing-card .card-corner small{font-size:13px}
+  .playing-card .suit-big{font-size:32px}
+  .playing-card.tiny{width:46px;height:69px}
+  .playing-card.tiny .card-corner b{font-size:12px}
+  .playing-card.tiny .card-corner small{font-size:10px}
+  .playing-card.tiny .suit-big{font-size:23px}
+  .hand{gap:5px;scroll-padding:8px}
+}
