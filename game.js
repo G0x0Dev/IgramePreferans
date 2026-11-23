@@ -20,28 +20,17 @@ const isInt = n => Number.isInteger(n);
 const suit = c => c[0];
 const rank = c => RANKS.indexOf(c.slice(1));
 const contractName = (v, hand = false) => `${hand ? 'Igra-' : ''}${CONTRACTS.find(x => x.value === v)?.name || '?'}`;
-// Keep rank order within each suit, but spread suits and alternate red/black
-// wherever the counts allow. This is display order only: it never affects rules.
+// Display order: group each suit and keep ranks ascending from 7 to Ace.
+// Pik -> Karo -> Tref -> Herc keeps the two red suits apart.
+// If Tref is absent, put Pik between Karo and Herc whenever possible.
+// Suit order does not affect trick-taking rules or the bid order.
 export function sortHand(hand) {
-  const buckets = new Map(SUITS.map(s => [s, hand.filter(c=>suit(c)===s).sort((a,b)=>rank(a)-rank(b))]));
-  const result=[];
-  const color = s => s==='D'||s==='H' ? 'red' : 'black';
-  let lastSuit=null, lastColor=null;
-  while(result.length<hand.length){
-    const available=SUITS.filter(s=>buckets.get(s).length);
-    const colors=[...new Set(available.map(color))];
-    const other=colors.filter(c=>c!==lastColor);
-    const desired=other.length ? other.sort((a,b)=>
-      available.filter(s=>color(s)===b).reduce((n,s)=>n+buckets.get(s).length,0)-
-      available.filter(s=>color(s)===a).reduce((n,s)=>n+buckets.get(s).length,0))[0] : lastColor;
-    const matching=available.filter(s=>color(s)===desired);
-    const choices=matching.filter(s=>s!==lastSuit);
-    const nextSuit=(choices.length?choices:matching).sort((a,b)=>buckets.get(b).length-buckets.get(a).length || SUITS.indexOf(a)-SUITS.indexOf(b))[0];
-    result.push(buckets.get(nextSuit).shift());
-    lastSuit=nextSuit;lastColor=color(nextSuit);
-  }
-  hand.splice(0,hand.length,...result);
-  return hand;
+  const has = new Set(hand.map(card => suit(card)));
+  const order = has.has('D') && has.has('H') && !has.has('C') && has.has('S')
+    ? ['D', 'S', 'H', 'C']
+    : ['S', 'D', 'C', 'H'];
+  const position = new Map(order.map((s, i) => [s, i]));
+  return hand.sort((a, b) => position.get(suit(a)) - position.get(suit(b)) || rank(a) - rank(b));
 }
 
 export function makeDeck() { return SUITS.flatMap(s => RANKS.map(r => s + r)); }
