@@ -153,8 +153,9 @@ test('last-card undo requires approval from BOTH other players and restores turn
     }
     await until(()=>peers[0].state.phase==='doubles');
     for(let n=0;n<2;n++){
-      playerAt(peers[0].state.turn).action('double',{action:'ok'});
-      await until(()=>peers[0].state.phase==='playing'||peers[0].state.turn!==peers[n===0?0:1].state?.seat);
+      const turn=peers[0].state.turn;
+      playerAt(turn).action('double',{action:'ok'});
+      await until(()=>peers[0].state.phase==='playing'||peers[0].state.turn!==turn);
     }
     await until(()=>peers[0].state.phase==='playing');
     const seat=peers[0].state.turn,author=playerAt(seat),before=[...author.state.hands];
