@@ -142,3 +142,29 @@
  .french-card.tiny .french-pip{font-size:11px}
  .french-card.tiny .french-ace{font-size:24px}
 }
+
+/* Consensus undo and season-long match history. */
+.undo-notice{
+  margin:12px 0;border:1px solid #d8b86d;background:#5c4b2b44;
+  padding:15px 17px;border-radius:10px;color:#f8e7bd;
+}
+.undo-notice strong{font-size:14px}
+.undo-notice p{margin:7px 0 12px;color:#e7d5b1;font-size:12px;line-height:1.55}
+.undo-trigger{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding-top:14px;margin-top:14px;border-top:1px solid #ffffff1a}
+.undo-trigger .button{font-size:11px}
+.score-table .leader-row td{background:#d7b77a1a;color:#f8dfaa;font-weight:700}
+.match-history{margin-top:19px}
+.match-history .side-title{font-size:23px}
+.match-history .standings-table{width:100%;table-layout:auto}
+.match-history .standings-table td,.match-history .standings-table th{padding:10px 6px}
+.match-history .standings-table th:last-child,.match-history .standings-table td:last-child{text-align:right}
+.match-history .action-row{margin:12px 0 18px}
+.history-title{font-size:13px;letter-spacing:.03em;color:#f5e1b5;margin:18px 0 8px}
+.history-list{display:grid;gap:8px;max-height:260px;overflow:auto}
+.history-match{display:flex;flex-direction:column;gap:5px;padding:10px 11px;border:1px solid #ffffff1a;border-radius:8px;background:#ffffff08}
+.history-match strong{font-size:11px;color:#f1dfbf}
+.history-match small{font-size:11px;line-height:1.5;color:#bac9ca}
+@media(max-width:560px){
+  .match-history .standings-table td,.match-history .standings-table th{font-size:10px;padding:8px 3px}
+  .undo-notice{margin:10px 0;padding:12px}
+}
