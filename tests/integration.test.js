@@ -34,12 +34,11 @@ async function until(fn,maxMs=2200){
   }
 }
 
-test('real HTTP + three WebSocket clients + reconnection + private hands + bid + following + scoring',async()=>{
+test('one shared table: five friends, settings, private hands and reconnection',async()=>{
   const port=30_000+randomInt(20_000);
   const proc=spawn(process.execPath,['server.js'],{cwd:process.cwd(),env:{...process.env,PORT:String(port)},stdio:'ignore'});
   const peers=[];
   try{
-    await until(async()=>true); // short event-loop yield before health polling
     let up=false;
     for(let i=0;i<100;i++){
       try{const r=await fetch(`http://127.0.0.1:${port}/health`);if(r.ok){up=true;break;}}
@@ -49,54 +48,65 @@ test('real HTTP + three WebSocket clients + reconnection + private hands + bid +
     const html=await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(html.status,200);
     assert.match(await html.text(),/Preferans/);
-    for(let i=0;i<3;i++){
+    const joined=[];
+    for(let i=0;i<6;i++){
       const peer=new Peer(`ws://127.0.0.1:${port}/ws`);peers.push(peer);
       await peer.ready;
+      joined.push(await peer.request('joinTable',{name:'Friend'+i}));
     }
-    const host=await peers[0].request('createRoom',{name:'Host'});
-    assert.equal(host.ok,true);
-    const one=await peers[1].request('joinRoom',{code:host.code,name:'Guest1'});
-    const two=await peers[2].request('joinRoom',{code:host.code,name:'Guest2'});
-    assert.equal(one.seat,1);assert.equal(two.seat,2);
+    assert.deepEqual(joined.slice(0,5).map(r=>r.seat),[0,1,2,null,null]);
+    assert.ok(joined.slice(0,5).every(r=>r.ok && r.code==='FRIENDS'));
+    assert.equal(joined[5].ok,false);
+    assert.match(joined[5].error,/five friend spots/i);
+    await until(()=>peers[4].state?.members.length===5);
+    assert.ok(peers[4].state.members.every(m=>!('token' in m)));
+    peers[4].action('settings',{startBula:50,maxRefe:4});
+    await until(()=>peers[4].errors.length>0);
+    assert.deepEqual(peers[4].state.settings,{startBula:100,maxRefe:2});
+    assert.equal((await peers[1].request('sitOut')).ok,true);
+    await until(()=>peers[1].state.seat===null);
+    assert.equal((await peers[3].request('takeSeat')).ok,true);
+    await until(()=>peers[3].state.seat===1);
+    peers[3].action('settings',{startBula:60,maxRefe:3});
+    await until(()=>peers[0].state?.settings.startBula===60 && peers[0].state?.settings.maxRefe===3);
     peers[0].action('start');
-    await until(()=>peers.every(p=>p.state?.phase==='auction'));
-    assert.deepEqual(peers.map(p=>p.state.hands.length),[10,10,10]);
-    assert.ok(peers[0].state.hands.some(c=>!peers[1].state.hands.includes(c)));
-    assert.equal(peers[0].state.talon.length,0);
-    const bidder=peers[peers[0].state.turn];
-    bidder.action('bid',{action:'bid',value:5});
+    await until(()=>peers.slice(0,5).every(p=>p.state?.phase==='auction'));
+    assert.deepEqual(peers.slice(0,5).map(p=>p.state.hands.length),[10,0,10,10,0]);
+    assert.ok(peers[0].state.hands.some(c=>!peers[3].state.hands.includes(c)));
+    assert.deepEqual(peers[4].state.hands,[]);
+    const activeAt=seat=>peers.find(p=>p.state?.seat===seat);
+    activeAt(peers[0].state.turn).action('bid',{action:'bid',value:5});
     await until(()=>peers[0].state.auction.bid===5);
     for(let n=0;n<2;n++){
       const turn=peers[0].state.turn;
-      peers[turn].action('bid',{action:'pass'});
+      activeAt(turn).action('bid',{action:'pass'});
       await until(()=>peers[0].state.auction.passed[turn]);
     }
-    await until(()=>peers.every(p=>p.state.phase==='talon'));
-    assert.equal(peers[0].state.talon.length,2); // exposed talon
+    await until(()=>peers.slice(0,5).every(p=>p.state.phase==='talon'));
     const dec=peers[0].state.contract.declarer;
-    peers[dec].action('takeTalon');
+    const declarer=activeAt(dec);
+    declarer.action('takeTalon');
     await until(()=>peers[0].state.phase==='discard');
-    assert.equal(peers[dec].state.hands.length,12);
-    assert.equal(peers[(dec+1)%3].state.hands.length,10);
-    peers[dec].action('discard',{cards:peers[dec].state.hands.slice(0,2)});
+    assert.equal(declarer.state.hands.length,12);
+    assert.deepEqual(peers[4].state.hands,[]);
+    declarer.action('discard',{cards:declarer.state.hands.slice(0,2)});
     await until(()=>peers[0].state.phase==='contract');
-    peers[dec].action('declare',{value:5});
+    declarer.action('declare',{value:5});
     await until(()=>peers[0].state.phase==='following');
-    peers[peers[0].state.turn].action('follow',{choice:'ne'});
+    activeAt(peers[0].state.turn).action('follow',{choice:'ne'});
     await until(()=>peers[0].state.follows.filter(x=>x===false).length===1);
-    peers[peers[0].state.turn].action('follow',{choice:'ne-bi'});
-    await until(()=>peers.every(p=>p.state.phase==='summary'));
-    assert.deepEqual(peers[0].state.followMessages.filter(Boolean).sort(),['Ne','Ne bi']);
+    activeAt(peers[0].state.turn).action('follow',{choice:'ne-bi'});
+    await until(()=>peers.slice(0,5).every(p=>p.state.phase==='summary'));
+    assert.deepEqual(peers[4].state.followMessages.filter(Boolean).sort(),['Ne','Ne bi']);
     assert.equal(peers[0].state.tricks[dec],10);
-    assert.equal(peers[0].state.scores.bula[dec],90);
-    // Reconnect with the exact session token, even once the game is underway.
-    const old=peers[1];old.close();
+    assert.equal(peers[0].state.scores.bula[dec],50);
     const reconnect=new Peer(`ws://127.0.0.1:${port}/ws`);peers.push(reconnect);
     await reconnect.ready;
-    const restored=await reconnect.request('joinRoom',{code:one.code,token:one.token});
+    const restored=await reconnect.request('joinTable',{token:joined[3].token});
     assert.equal(restored.ok,true);assert.equal(restored.seat,1);
     await until(()=>reconnect.state?.phase==='summary');
     assert.equal(reconnect.state.hands.length,10);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/health`).then(r=>r.json())).rooms,1);
   }finally{
     peers.forEach(p=>{try{p.close();}catch{}});
     proc.kill('SIGTERM');
