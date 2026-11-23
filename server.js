@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { createGame,deal,auctionAction,takeTalon,discard,declare,follow,callPartner,doubleAction,playCard,advanceTrick,viewFor,finalScores } from './game.js';
 import { loadHistory,saveHistory,mergeHistory,leaderboard } from './history.js';
+import { botMove } from './bot.js';
 
 const publicDir=join(dirname(fileURLToPath(import.meta.url)),'public');
 const staticPaths=new Map([
@@ -15,7 +16,9 @@ const mime={'index.html':'text/html; charset=utf-8','app.js':'application/javasc
 const clients=new Map();
 const ROOM_CODE='FRIENDS';
 const FRIEND_LIMIT=5;
-const room={code:ROOM_CODE,game:createGame(),members:[],nextMemberId:1,updated:Date.now(),timer:null,archiveTimer:null,history:loadHistory(),undoCandidate:null,undoRequest:null,matchId:null};
+const sharedRoom={code:ROOM_CODE,game:createGame(),members:[],nextMemberId:1,updated:Date.now(),timer:null,archiveTimer:null,history:loadHistory(),undoCandidate:null,undoRequest:null,matchId:null,solo:false};
+const soloRooms=new Map();
+const SOLO_LIMIT=30;
 const MAX_MESSAGE=128_000; // allows restoring a full bounded JSON score archive
 const GUID='258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 let socketCounter=0;
@@ -63,10 +66,11 @@ function sendState(room){
     view.memberId=member.id;
     view.myName=member.name;
     view.friendLimit=FRIEND_LIMIT;
-    view.history=room.history;
-    view.leaderboard=leaderboard(room.history);
+    view.mode=room.solo?'solo':'friends';
+    view.history=room.solo?[]:room.history;
+    view.leaderboard=room.solo?[]:leaderboard(room.history);
     view.undoRequest=room.undoRequest ? {seat:room.undoRequest.seat,card:room.undoRequest.card,approvals:room.undoRequest.approvals} : null;
-    view.canUndo=!!room.undoCandidate && !room.undoRequest && room.undoCandidate.seat===member.seat && Date.now()-room.undoCandidate.at<=30000 && ['playing','trickReview','summary'].includes(room.game.phase);
+    view.canUndo=!room.solo && !!room.undoCandidate && !room.undoRequest && room.undoCandidate.seat===member.seat && Date.now()-room.undoCandidate.at<=30000 && ['playing','trickReview','summary'].includes(room.game.phase);
     for(const cid of member.connections)send(clients.get(cid),'state',view);
   }
 }
@@ -108,6 +112,7 @@ function guard(client,event,fn){
     room.updated=Date.now();
     if(process.env.DEBUG_GAME)console.log(room.code,seat,event,room.game.phase);
     sendState(room);
+    scheduleBots(room);
   }catch(e){send(client,'actionError',e.message||'Invalid action.');}
 }
 function settleReview(room){
@@ -115,7 +120,7 @@ function settleReview(room){
   room.timer=setTimeout(()=>{
     room.timer=null;
     if(room.game.phase==='trickReview'){
-      try{advanceTrick(room.game);if(room.game.finished)scheduleArchive(room);sendState(room);}catch(e){console.error(e);}
+      try{advanceTrick(room.game);if(room.game.finished)scheduleArchive(room);sendState(room);scheduleBots(room);}catch(e){console.error(e);}
     }
   },1400);
 }
@@ -132,6 +137,7 @@ function clearArchiveTimer(room){
   room.archiveTimer=null;
 }
 function recordFinished(room){
+  if(room.solo)return;
   if(!room.game.finished || !room.matchId || room.history.some(h=>h.id===room.matchId))return;
   const record={
     id:room.matchId,at:new Date().toISOString(),rounds:room.game.round,
@@ -142,6 +148,7 @@ function recordFinished(room){
   sendState(room);
 }
 function scheduleArchive(room){
+  if(room.solo)return;
   if(!room.game.finished || room.archiveTimer)return;
   clearArchiveTimer(room);
   const remaining=room.undoCandidate ? Math.max(0,UNDO_WINDOW_MS-(Date.now()-room.undoCandidate.at)) : 0;
@@ -156,9 +163,57 @@ function resetUndo(room){
   room.undoCandidate=null;
   clearArchiveTimer(room);
 }
+// Solo practice uses independent rooms, never seats or scoring from the friends' table.
+function newSoloRoom(name){
+  if(soloRooms.size>=SOLO_LIMIT){
+    for(const [token,old] of soloRooms){
+      if(!old.members[0].online && Date.now()-old.updated>15*60*1000)soloRooms.delete(token);
+    }
+    if(soloRooms.size>=SOLO_LIMIT)throw Error('Practice is full right now. Try again later.');
+  }
+  const token=randomBytes(28).toString('hex');
+  const human={id:1,name,seat:0,token,connections:new Set(),online:false};
+  const bot1={id:2,name:'Computer 1',seat:1,bot:true,connections:new Set(),online:true};
+  const bot2={id:3,name:'Computer 2',seat:2,bot:true,connections:new Set(),online:true};
+  const game=createGame();
+  game.players=[human,bot1,bot2];
+  const room={code:'PRACTICE',game,members:[human,bot1,bot2],nextMemberId:4,updated:Date.now(),
+    timer:null,archiveTimer:null,botTimer:null,history:[],undoCandidate:null,undoRequest:null,matchId:null,solo:true};
+  soloRooms.set(token,room);
+  return {room,member:human};
+}
+function resetPractice(room){
+  if(room.botTimer){clearTimeout(room.botTimer);room.botTimer=null;}
+  if(room.timer){clearTimeout(room.timer);room.timer=null;}
+  resetUndo(room);
+  const settings=room.game.settings;
+  room.game=createGame(settings);
+  room.game.players=room.members;
+  room.matchId=null;
+}
+function scheduleBots(room){
+  if(!room.solo||room.botTimer||room.game.phase==='trickReview'||room.game.phase==='summary'||room.game.phase==='lobby')return;
+  const seat=room.game.turn;
+  if(!Number.isInteger(seat)||!room.game.players[seat]?.bot)return;
+  const configured=Number(process.env.BOT_DELAY_MS);
+  const delay=process.env.BOT_DELAY_MS!==undefined && Number.isFinite(configured)
+    ? Math.max(0,Math.min(2000,configured)):280;
+  room.botTimer=setTimeout(()=>{
+    room.botTimer=null;
+    if(!room.solo||!room.game.players[room.game.turn]?.bot)return;
+    try{
+      const didMove=botMove(room.game);
+      if(!didMove)return;
+      if(room.game.phase==='trickReview')settleReview(room);
+      sendState(room);
+      scheduleBots(room);
+    }catch(e){console.error('Computer move failed:',e);}
+  },delay);
+}
 function handleUndo(client,event,data,id){
   try{
-    const {seat}=session(client);
+    const {seat,room}=session(client);
+    if(room.solo)throw Error('Consensus undo is for human games; use Restart practice for a fresh game.');
     if(seat===null)throw Error('Only seated players can request or approve an undo.');
     const candidate=room.undoCandidate;
     if(event==='requestUndo'){
@@ -207,7 +262,39 @@ function handleUndo(client,event,data,id){
 function handleMessage(client,message){
   if(!message||typeof message!=='object'||typeof message.event!=='string')return;
   const {event,data={},id}=message;
+  if(event==='joinSolo'){
+    try{
+      let target=null;
+      if(data.token && typeof data.token==='string' && soloRooms.has(data.token)){
+        const room=soloRooms.get(data.token);
+        target={room,member:room.members[0]};
+      }
+      if(!target){
+        if(data.token)throw Error('The previous practice session has expired. Start a new one.');
+        if(!nameValid(data.name))throw Error('Enter a name of 1–24 characters.');
+        target=newSoloRoom(data.name.trim());
+      }
+      attach(client,target.room,target.member);
+      reply(client,id,{ok:true,token:target.member.token,seat:0,mode:'solo'});
+      sendState(target.room);
+      scheduleBots(target.room);
+    }catch(e){reply(client,id,{ok:false,error:e.message});}
+    return;
+  }
+  if(event==='exitSolo'){
+    try{
+      if(!client.room?.solo)throw Error('You are not in practice mode.');
+      const old=client.room,token=old.members[0].token;
+      detach(client);soloRooms.delete(token);
+      if(old.botTimer)clearTimeout(old.botTimer);
+      if(old.timer)clearTimeout(old.timer);
+      reply(client,id,{ok:true});
+      send(client,'leftTable',{});
+    }catch(e){reply(client,id,{ok:false,error:e.message});}
+    return;
+  }
   if(event==='joinTable'){
+    const room=sharedRoom;
     try{
       const previous=room.members.find(m=>data.token&&m.token===data.token);
       let member=previous;
@@ -228,6 +315,7 @@ function handleMessage(client,message){
     }catch(e){reply(client,id,{ok:false,error:e.message});}
     return;
   }
+  const room=client.room||sharedRoom;
   if(event==='requestUndo'||event==='voteUndo'){
     handleUndo(client,event,data,id);return;
   }
@@ -240,6 +328,14 @@ function handleMessage(client,message){
       saveHistory(room.history);
       reply(client,id,{ok:true,count:room.history.length});sendState(room);
     }catch(e){reply(client,id,{ok:false,error:e.message});}return;
+  }
+  if(event==='restartSolo'){
+    try{
+      const {room,seat}=session(client);
+      if(!room.solo||seat!==0)throw Error('Restart is only available to the practice player.');
+      resetPractice(room);reply(client,id,{ok:true});sendState(room);
+    }catch(e){reply(client,id,{ok:false,error:e.message});}
+    return;
   }
   if(['takeSeat','sitOut','leaveTable','removeOffline','newMatch'].includes(event)){
     try{
@@ -273,6 +369,7 @@ function handleMessage(client,message){
         }
       }
       reply(client,id,{ok:true});sendState(room);
+      scheduleBots(room);
     }catch(e){reply(client,id,{ok:false,error:e.message});}
     return;
   }
@@ -287,7 +384,7 @@ function handleMessage(client,message){
       g.settings=settings;
       g.scores.bula=[settings.startBula,settings.startBula,settings.startBula];
     });break;
-    case 'start':action((g,seat,room)=>{if(!g.players.every(p=>p?.online))throw Error('Three online players must take seats before dealing.');resetUndo(room);room.matchId=randomBytes(16).toString('hex');deal(g);});break;
+    case 'start':action((g,seat,room)=>{if(!g.players.every(p=>p?.online))throw Error('Three online players must take seats before dealing.');resetUndo(room);if(!room.solo)room.matchId=randomBytes(16).toString('hex');deal(g);});break;
     case 'nextRound':action((g,seat,room)=>{if(g.phase!=='summary')throw Error('This round has not ended.');resetUndo(room);deal(g);});break;
     case 'bid':action((g,seat)=>auctionAction(g,seat,data.action,data.value));break;
     case 'takeTalon':action((g,seat)=>takeTalon(g,seat));break;
