@@ -88,15 +88,35 @@
   socket.on('actionError',message=>sayError(message));
 
   const icon = c => `<span class="suit-symbol ${['D','H'].includes(c.s)?'red':''}">${c.s?SUITS[c.s]:''}</span>`;
+  // French-suited 32-card deck: pip patterns for 7–10, Ace and framed royal faces.
+  function cardFace(rank,symbol) {
+    if(rank==='A') return `<div class="french-ace">${symbol}</div>`;
+    if(['J','Q','K'].includes(rank)){
+      const emblem=rank==='K'?'♛':rank==='Q'?'♕':'⚜';
+      return `<div class="french-court"><div class="court-crest">${emblem}</div><div class="court-person"><span class="court-hat">♛</span><span class="court-head">●</span><span class="court-robe">${symbol}</span></div><div class="court-medallion">${rank}</div><div class="court-foot">${symbol} ✦ ${symbol}</div></div>`;
+    }
+    const patterns={
+      '7': [[0,0],[1,0],[0,1],[1,1],[0,2],[1,2],[.5,1.5]],
+      '8': [[0,0],[1,0],[0,1],[1,1],[0,2],[1,2],[.5,.5],[.5,1.5]],
+      '9': [[0,0],[1,0],[0,1],[1,1],[0,2],[1,2],[.5,.3],[.5,1.1],[.5,1.9]],
+      '10':[[0,0],[1,0],[0,1],[1,1],[0,2],[1,2],[.5,.2],[.5,.8],[.5,1.4],[.5,2]]
+    };
+    const pips=(patterns[rank]||[]).map(([x,y])=>{
+      const left=x===0?'21%':x===1?'79%':'50%';
+      const top=(18+y*31)+'%';
+      return `<span class="french-pip" style="left:${left};top:${top}">${symbol}</span>`;
+    }).join('');
+    return `<div class="french-pips">${pips}</div>`;
+  }
   function cardHtml(c,{tiny=false,disabled=false,selectable=false,selectedCard=false}={}) {
     if(!c)return `<div class="playing-card back ${tiny?'tiny':''}" aria-label="Face-down card"><span class="back-emblem">♠</span></div>`;
     const suit=c[0],rank=c.slice(1),symbol=SUITS[suit];
     const red=suit==='D'||suit==='H';
     const rankLabel={J:'Jack',Q:'Queen',K:'King',A:'Ace'}[rank]||rank;
     const suitLabel={S:'Spades',D:'Diamonds',C:'Clubs',H:'Hearts'}[suit];
-    return `<div class="playing-card ${tiny?'tiny':''} ${red?'red':'black'} ${disabled?'disabled':''} ${selectedCard?'selected':''}" ${selectable?`data-card="${esc(c)}" role="button" tabindex="0" aria-label="${rankLabel} of ${suitLabel}"`:''}>
+    return `<div class="playing-card french-card ${tiny?'tiny':''} ${red?'red':'black'} ${disabled?'disabled':''} ${selectedCard?'selected':''}" ${selectable?`data-card="${esc(c)}" role="button" tabindex="0" aria-label="${rankLabel} of ${suitLabel}"`:''}>
       <span class="card-corner"><b>${esc(rank)}</b><small>${symbol}</small></span>
-      <span class="card-center" aria-hidden="true"><span class="suit-big">${symbol}</span><span class="court-flourish">${['J','Q','K','A'].includes(rank)?'✦':''}</span></span>
+      <span class="french-face" aria-hidden="true">${cardFace(rank,symbol)}</span>
       <span class="card-corner mirrored" aria-hidden="true"><b>${esc(rank)}</b><small>${symbol}</small></span></div>`;
   }
   function button(title,action,opts={}) {
@@ -187,8 +207,8 @@
       const a=s.auction;
       if(!mine) body=`<div class="actions-title">${esc(nameOf(s.turn))} is bidding</div><div class="actions-subtitle">Highest bid: ${a.highSeat===null?'None':`${contractName(a.bid,a.hand)} by ${nameOf(a.highSeat)}`}. ${a.priority!==null?`${esc(nameOf(a.priority))} has Mogu priority.`:''}</div>`;
       else {
-        body=`<div class="actions-title">Your turn to bid</div><div class="actions-subtitle">${a.hand?`A hand declaration (${contractName(a.handValue,true)}) is on the table. Only a stronger hand declaration can beat it.`:`Current bid: ${a.highSeat===null?'None':`${contractName(a.bid)} — ${esc(nameOf(a.highSeat))}`}. Bid higher, say Mogu if you have priority, or pass.`}</div>`;
-        if(!a.hand && a.bid<7) body+=`<div class="group-label">Standard bid</div>${contractButtons(CONTRACTS.filter(c=>c.v>a.bid),'bid')}`;
+        body=`<div class="actions-title">Your turn to bid</div><div class="actions-subtitle">${a.hand?`A hand declaration (${contractName(a.handValue,true)}) is on the table. Only a stronger hand declaration can beat it.`:`Current bid: ${a.highSeat===null?'None — begin with Pik (unless declaring Igra)':`${contractName(a.bid)} — ${esc(nameOf(a.highSeat))}`}. Bid higher, say Mogu if you have priority, or pass.`}</div>`;
+        if(!a.hand && a.bid<7) body+=`<div class="group-label">Standard bid · first ordinary bid must be Pik</div>${contractButtons(CONTRACTS.filter(c=>c.v>a.bid&&(a.highSeat!==null||c.v===2)),'bid')}`;
         if(!a.hand&&a.highSeat!==null&&a.highSeat!==s.seat&&a.priority===s.seat) body+=`<div class="action-row" style="margin-top:9px">${button(`Mogu ${a.bid}`,'mogu',{variant:'active'})}</div>`;
         if(a.handValue!==7) body+=`<div class="group-label">Declare from hand · skip talon · +1 game value</div>${contractButtons(CONTRACTS.filter(c=>!a.hand||c.v>a.handValue),'hand',true)}`;
         body+=`<div class="soft-divider"></div>${button('Dalje · Pass','pass',{variant:'subtle'})}`;
@@ -208,14 +228,14 @@
       ${mine?`<div class="action-row">${button('Dođem','followYes',{variant:'primary'})}${button('Ne','followNo')}${button('Ne bi','followRatherNot')}</div>`:''}`;
     } else if(s.phase==='calling') {
       body=`<div class="actions-title">${mine?'Invite the other defender?':`${esc(nameOf(s.turn))} decides whether to invite a partner`}</div>
-      <div class="actions-subtitle">Inviting brings the other defender into the tricks. You receive both defenders' supe but need at least four tricks combined.</div>
+      <div class="actions-subtitle">Inviting brings the other defender into the tricks. The invited player earns no points and cannot say Kontra. You receive the combined defenders' supe but need at least four tricks together.</div>
       ${mine?`<div class="action-row">${button('Idemo zajedno · Invite','callYes',{variant:'primary'})}${button('Defend alone','callNo')}</div>`:''}`;
     } else if(s.phase==='doubles') {
       const labels=['Kontra','Rekontra','Subkontra'];
       const stage=s.doubleStage;
       body=`<div class="actions-title">${mine?'Raise the stakes?':`${esc(nameOf(s.turn))} decides the stakes`}</div>
-        <div class="actions-subtitle">Current multiplier ×${s.multiplier}. ${stage===0?'Each defender may give Kontra; plain Pik requires it to be played.':'Each new counter doubles all bula and supa changes. The defender giving Kontra takes sole scoring responsibility.'}</div>
-        ${mine?`<div class="action-row">${button('Moze · Accept','doubleOk')}${stage===0&&s.follows[s.seat]===false?'':button(labels[stage],'doubleRaise',{variant:'primary'})}</div>`:''}`;
+        <div class="actions-subtitle">Current multiplier ×${s.multiplier}. ${stage===0?'Only an eligible defender may give Kontra; invited players cannot. Plain Pik requires Kontra to be played.':'Each new counter doubles all bula and supa changes. The defender giving Kontra takes sole scoring responsibility.'}</div>
+        ${mine?`<div class="action-row">${button('Moze · Accept','doubleOk')}${stage===0&&(s.follows[s.seat]===false||s.invited===s.seat)?'':button(labels[stage],'doubleRaise',{variant:'primary'})}</div>`:''}`;
     } else if(s.phase==='playing') {
       body=`<div class="actions-title">${mine?'Your turn — play one card':`${esc(nameOf(s.turn))} is playing`}</div><div class="actions-subtitle">${mine?'You must follow the led suit if possible, or play trump if void in a trump contract. Only legal cards can be selected.':'Follow suit, trump when void in trump games, and capture tricks to meet your contract.'}</div>`;
     } else if(s.phase==='trickReview') {
