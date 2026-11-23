@@ -53,20 +53,37 @@ test('all pass: refe to each, redeal after result',()=>{
   assert.equal(g.dealer,1);
   assert.deepEqual(g.scores.refe,[1,1,1]);
 });
-test('ordinary auction opens at Pik, even if players pass; Igra can open at any game',()=>{
+test('ordinary bids must advance Pik → Karo → Herc → Tref → Betl → Sans without skips',()=>{
   const g=game();
   assert.equal(g.auction.highSeat,null);
   assert.throws(()=>auctionAction(g,1,'bid',3),/first ordinary bid must be Pik/i);
-  assert.equal(g.auction.highSeat,null);
   auctionAction(g,1,'pass');
   assert.throws(()=>auctionAction(g,2,'bid',5),/first ordinary bid must be Pik/i);
-  auctionAction(g,2,'bid',2);
+  auctionAction(g,2,'bid',2); // Pik
   assert.equal(g.auction.bid,2);
-  auctionAction(g,0,'bid',5);
-  assert.equal(g.auction.bid,5);
+  assert.throws(()=>auctionAction(g,0,'bid',5),/next ordinary bid must be Karo/i);
+  assert.equal(g.auction.bid,2);
+  auctionAction(g,0,'bid',3); // Karo
+  assert.equal(g.auction.bid,3);
+  assert.throws(()=>auctionAction(g,2,'bid',6),/next ordinary bid must be Herc/i);
+  auctionAction(g,2,'bid',4); // Herc
+  assert.equal(g.auction.bid,4);
+});
+test('sequential raising and Mogu priority retain their normal rules',()=>{
+  const g=game();
+  auctionAction(g,1,'bid',2);
+  auctionAction(g,2,'bid',3);
+  auctionAction(g,0,'bid',4);
+  auctionAction(g,1,'bid',5);
+  auctionAction(g,2,'bid',6);
+  auctionAction(g,0,'bid',7);
+  assert.equal(g.auction.bid,7);
+  assert.throws(()=>auctionAction(g,1,'bid',7),/must be higher/i);
+  assert.equal(g.auction.highSeat,0);
+  // Igra can still skip the standard sequence, including direct Igra-Sans.
   const h=game();
-  auctionAction(h,1,'hand',6);
-  assert.equal(h.auction.bid,6);
+  auctionAction(h,1,'hand',7);
+  assert.equal(h.auction.bid,7);
   assert.equal(h.auction.hand,true);
 });
 test('invited defender cannot Kontra, earns no bula or supe, while inviter receives combined tricks',()=>{
