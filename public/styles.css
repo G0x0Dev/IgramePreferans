@@ -108,3 +108,37 @@
   .playing-card.tiny .suit-big{font-size:23px}
   .hand{gap:5px;scroll-padding:8px}
 }
+
+/* Classic French-suited faces: recognizable suit pips and a framed royal motif. */
+.french-card .french-face{position:absolute;inset:17px 17px;z-index:0;pointer-events:none}
+.french-card .french-ace{height:100%;display:grid;place-items:center;font-family:Georgia,serif;font-size:48px;line-height:1;text-shadow:0 2px 1px #ffffff}
+.french-card .french-pips{position:relative;width:100%;height:100%;overflow:hidden}
+.french-card .french-pip{position:absolute;transform:translate(-50%,-50%);font-family:Georgia,serif;font-size:19px;line-height:1}
+.french-card .french-court{position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;border:1px solid currentColor;border-radius:3px;background:repeating-linear-gradient(135deg,#e5bd7c22 0 3px,transparent 3px 8px),linear-gradient(145deg,#fffbf0,#f9ecd7)}
+.french-card .court-crest{position:absolute;top:0;left:0;right:0;text-align:center;font-size:15px;opacity:.8}
+.french-card .court-person{position:relative;margin-top:8px;width:40px;height:55px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.french-card .court-hat{position:absolute;top:-6px;color:#a47d36;font-size:22px;line-height:1}
+.french-card .court-head{position:absolute;top:10px;font-size:23px;line-height:1;color:#e3b98c;text-shadow:1px 0 #654b39,-1px 0 #654b39}
+.french-card .court-robe{position:absolute;bottom:0;width:37px;height:28px;display:grid;place-items:center;font-size:26px;line-height:1;border:1px solid #98703e;border-radius:48% 48% 3px 3px;background:linear-gradient(150deg,#eed9ad,#fff9e6)}
+.french-card .court-medallion{position:absolute;right:1px;top:28px;font-size:9px;color:#997737;font-weight:800}
+.french-card .court-foot{position:absolute;bottom:1px;left:0;right:0;text-align:center;font-size:7px;letter-spacing:1px;opacity:.9}
+.french-card.tiny .french-face{inset:12px 12px}
+.french-card.tiny .french-ace{font-size:34px}
+.french-card.tiny .french-pip{font-size:13px}
+.french-card.tiny .court-person{transform:scale(.65);margin-top:6px}
+.french-card.tiny .court-crest{font-size:10px}
+.french-card.tiny .court-foot,.french-card.tiny .court-medallion{display:none}
+.last-trick .french-card .french-face{inset:9px 10px}
+.last-trick .french-card .french-ace{font-size:22px}
+.last-trick .french-card .french-pip{font-size:10px}
+.last-trick .french-card .court-person{transform:scale(.43)}
+.last-trick .french-card .court-crest,.last-trick .french-card .court-foot{display:none}
+@media(max-width:560px){
+ .french-card .french-face{inset:14px 13px}
+ .french-card .french-ace{font-size:36px}
+ .french-card .french-pip{font-size:14px}
+ .french-card .court-person{transform:scale(.8)}
+ .french-card.tiny .french-face{inset:9px 10px}
+ .french-card.tiny .french-pip{font-size:11px}
+ .french-card.tiny .french-ace{font-size:24px}
+}
