@@ -333,7 +333,7 @@
         }).join('')+'</div>'+
         (mine?'<div class="group-label">My Igra is</div><div class="auction-bid-line" role="group" aria-label="Declare suit Igra">'+
           allowed.map(c=>button(c.n,'igraDeclare',{value:c.v,extra:icon(c)})).join('')+
-          (highest>2?button('Moja je manja · Weaker','igraWeaker',{variant:'subtle'}):'')+'</div>':'');
+          (highest>=2?button('Moja je manja · Weaker','igraWeaker',{variant:'subtle'}):'')+'</div>':'');
     } else if(s.phase==='talon') {
       body=`<div class="actions-title">The talon is revealed</div><div class="actions-subtitle">${esc(nameOf(s.contract.declarer))} won at ${s.contract.minimum}. Two cards are shown publicly before being added to the declarer's hand.</div>
         <div class="talon-preview">${s.talon.map(c=>cardHtml(c,{tiny:true})).join('')}</div>${mine?button('Take the talon','takeTalon',{variant:'primary'}):'<span class="text-muted">Waiting for declarer to take the talon.</span>'}`;
