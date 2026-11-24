@@ -86,6 +86,53 @@ test('sequential raising and Mogu priority retain their normal rules',()=>{
   assert.equal(h.auction.bid,7);
   assert.equal(h.auction.hand,true);
 });
+test('Igra options share the opening row, then disappear after each player has acted',()=>{
+  const g=game();
+  assert.deepEqual(viewFor(g,1,'TABLE').auctionOptions,
+    {ordinary:2,hand:[2,3,4,5,6,7]});
+  auctionAction(g,1,'bid',2); // First player's opening action.
+  assert.deepEqual(viewFor(g,2,'TABLE').auctionOptions,
+    {ordinary:3,hand:[2,3,4,5,6,7]});
+  auctionAction(g,2,'bid',3); // Second opening action.
+  assert.deepEqual(viewFor(g,0,'TABLE').auctionOptions,
+    {ordinary:4,hand:[2,3,4,5,6,7]});
+  auctionAction(g,0,'bid',4); // Third opening action.
+  assert.deepEqual(viewFor(g,1,'TABLE').auctionOptions,
+    {ordinary:5,hand:[]});
+  assert.deepEqual(viewFor(g,2,'TABLE').auctionOptions,
+    {ordinary:null,hand:[]}, 'only the acting player receives bids');
+  assert.throws(()=>auctionAction(g,1,'hand',7),/first bidding round/i);
+  assert.equal(g.auction.bid,4,'illegal Igra must not change the auction');
+  auctionAction(g,1,'bid',5);
+  assert.equal(g.auction.bid,5);
+});
+test('Igra can be raised in the first bidding round but not afterward',()=>{
+  const g=game();
+  auctionAction(g,1,'hand',2);
+  assert.deepEqual(viewFor(g,2,'TABLE').auctionOptions,
+    {ordinary:null,hand:[3,4,5,6,7]});
+  auctionAction(g,2,'hand',3);
+  auctionAction(g,0,'pass');
+  assert.deepEqual(viewFor(g,1,'TABLE').auctionOptions,
+    {ordinary:null,hand:[]});
+  assert.throws(()=>auctionAction(g,1,'hand',4),/first bidding round/i);
+  auctionAction(g,1,'pass');
+  assert.equal(g.phase,'following','early Igra declaration continues to the hand game');
+});
+test('a new hand starts with its own first bidding round',()=>{
+  const g=game();
+  auctionAction(g,1,'bid',2);
+  auctionAction(g,2,'pass');auctionAction(g,0,'pass');
+  assert.equal(g.phase,'talon');
+  // End this hand through the standard flow, then deal a fresh one.
+  takeTalon(g,1);discard(g,1,g.hands[1].slice(0,2));declare(g,1,5);
+  follow(g,g.turn,'ne');follow(g,g.turn,'ne');
+  assert.equal(g.phase,'summary');
+  deal(g,makeDeck());
+  assert.equal(g.phase,'auction');
+  assert.deepEqual(viewFor(g,g.turn,'TABLE').auctionOptions,
+    {ordinary:2,hand:[2,3,4,5,6,7]});
+});
 test('invited defender cannot Kontra, earns no bula or supe, while inviter receives combined tricks',()=>{
   const g=game();
   const dec=winBid(g,4);
