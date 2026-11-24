@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { randomBytes, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
-import { createGame,deal,auctionAction,takeTalon,discard,declare,follow,callPartner,doubleAction,playCard,advanceTrick,viewFor,finalScores } from './game.js';
+import { createGame,deal,auctionAction,igraDeclare,takeTalon,discard,declare,follow,callPartner,doubleAction,playCard,advanceTrick,viewFor,finalScores } from './game.js';
 import { loadHistory,saveHistory,mergeHistory,leaderboard } from './history.js';
 import { botMove } from './bot.js';
 
@@ -387,6 +387,7 @@ function handleMessage(client,message){
     case 'start':action((g,seat,room)=>{if(!g.players.every(p=>p?.online))throw Error('Three online players must take seats before dealing.');resetUndo(room);if(!room.solo)room.matchId=randomBytes(16).toString('hex');deal(g);});break;
     case 'nextRound':action((g,seat,room)=>{if(g.phase!=='summary')throw Error('This round has not ended.');resetUndo(room);deal(g);});break;
     case 'bid':action((g,seat)=>auctionAction(g,seat,data.action,data.value));break;
+    case 'igraDeclare':action((g,seat)=>igraDeclare(g,seat,data.value));break;
     case 'takeTalon':action((g,seat)=>takeTalon(g,seat));break;
     case 'discard':action((g,seat)=>discard(g,seat,data.cards));break;
     case 'declare':action((g,seat)=>declare(g,seat,data.value));break;

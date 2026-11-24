@@ -47,7 +47,7 @@
   const seats = i => (i+3)%3;
   const rightOf = i => (i+1)%3;
   const nameOf = i => state?.players?.[i]?.name||`Player ${i+1}`;
-  const phaseTitle = {lobby:'Waiting for players',auction:'The auction',talon:'The talon',discard:'Discard two cards',contract:'Choose your contract',following:'Defenders decide',calling:'Invite a partner',doubles:'Kontra & raises',playing:'Trick-taking',trickReview:'Trick complete',summary:'Round results'};
+  const phaseTitle = {lobby:'Waiting for players',auction:'The auction',igraReveal:'Declare your Igra',talon:'The talon',discard:'Discard two cards',contract:'Choose your contract',following:'Defenders decide',calling:'Invite a partner',doubles:'Kontra & raises',playing:'Trick-taking',trickReview:'Trick complete',summary:'Round results'};
   const contractName = (v,hand=false) => `${hand?'Igra-':''}${CONTRACTS.find(c=>c.v===v)?.n||'?'}`;
   const seatLabel = i => i===state.seat?'You':nameOf(i);
   const SESSION_KEY='pref3:friends';
@@ -282,25 +282,42 @@
     let body='';
     if(s.phase==='auction') {
       const a=s.auction;
-      const opening=a.history.length<3;
-      const options=s.auctionOptions||{ordinary:null,hand:[]};
-      if(!mine) body=`<div class="actions-title">${esc(nameOf(s.turn))} is bidding</div><div class="actions-subtitle">Highest bid: ${a.highSeat===null?'None':`${contractName(a.bid,a.hand)} by ${esc(nameOf(a.highSeat))}`}. ${a.priority!==null?`${esc(nameOf(a.priority))} has Mogu priority.`:''}</div>`;
-      else {
-        const next=CONTRACTS.find(c=>c.v===options.ordinary);
-        const handBids=CONTRACTS.filter(c=>options.hand.includes(c.v));
-        const choices=[
-          ...(next?[button(next.n,'bid',{value:next.v,extra:icon(next)})]:[]),
-          ...handBids.map(c=>button(`Igra ${c.n}`,'hand',{value:c.v,extra:icon(c)}))
-        ];
-        body=`<div class="actions-title">Your turn to bid</div>
-          <div class="actions-subtitle">${a.highSeat===null?'No bid yet':`Current bid: ${contractName(a.bid,a.hand)} — ${esc(nameOf(a.highSeat))}`}.
-          ${opening?'Opening turn: Igra skips the talon and adds +1 game value.':'Only the next ordinary contract can be bid now.'}</div>`;
-        if(choices.length)body+=`<div class="group-label">${opening?'Opening bids · ordinary and Igra together':'Next possible bid'}</div>
-          <div class="auction-bid-line" role="group" aria-label="Available bids">${choices.join('')}</div>`;
-        if(!a.hand&&a.highSeat!==null&&a.highSeat!==s.seat&&a.priority===s.seat)
-          body+=`<div class="action-row" style="margin-top:9px">${button(`Mogu ${a.bid}`,'mogu',{variant:'active'})}</div>`;
-        body+=`<div class="soft-divider"></div>${button('Dalje · Pass','pass',{variant:'subtle'})}`;
+      const options=s.auctionOptions||{ordinary:null,igra:false,betl:false,sans:false};
+      const next=CONTRACTS.find(c=>c.v===options.ordinary);
+      const choices=[
+        ...(next?[button(next.n,'bid',{value:next.v,extra:icon(next)})]:[]),
+        ...(options.igra?[button('Igra','igra',{variant:'primary'})]:[]),
+        ...(options.betl?[button('Igra Betl','hand',{value:6})]:[]),
+        ...(options.sans?[button('Igra Sans','hand',{value:7})]:[])
+      ];
+      const highest=a.handMode==='suit'?'Igra (suit yet to be declared)':
+        a.highSeat===null?'None':contractName(a.bid,a.hand);
+      if(!mine)body='<div class="actions-title">'+esc(nameOf(s.turn))+
+        ' is bidding</div><div class="actions-subtitle">Current bid: '+esc(highest)+
+        '. '+(a.handMode==='suit'?'Other players may also announce Igra or choose Igra Betl/Sans.':'Await the next action.')+'</div>';
+      else{
+        body='<div class="actions-title">Your turn to bid</div><div class="actions-subtitle">'+
+          (a.handMode==='suit'?'Someone announced Igra. You may also say Igra; suit contracts are revealed afterward.':
+          a.handMode==='betl'?'Igra Betl was declared. Only Igra Sans can beat it.':
+          'Ordinary bids advance one contract at a time. Igra enters the suit-game auction; Igra Betl and Igra Sans are declared directly.')+'</div>';
+        if(choices.length)body+='<div class="group-label">Available bids</div><div class="auction-bid-line" role="group" aria-label="Available bids">'+choices.join('')+'</div>';
+        if(!a.hand && a.highSeat!==null && a.highSeat!==s.seat && a.priority===s.seat)
+          body+='<div class="action-row" style="margin-top:9px">'+button('Mogu '+a.bid,'mogu',{variant:'active'})+'</div>';
+        body+='<div class="soft-divider"></div>'+button('Dalje · Pass','pass',{variant:'subtle'});
       }
+    } else if(s.phase==='igraReveal') {
+      const a=s.auction;
+      const declarations=a.igraDeclarations||[];
+      const claimants=a.igraPlayers||[];
+      body='<div class="actions-title">'+(mine?'Declare your Igra suit game':esc(nameOf(s.turn))+' is declaring Igra')+
+        '</div><div class="actions-subtitle">Each Igra player directly declares Pik, Karo, Herc or Tref (no step-by-step raises). Highest game wins; an earlier Igra claimant wins a tie. Talon is skipped.</div>'+
+        '<div class="group-label">Igra players</div><div class="igra-claims">'+
+        claimants.map(seat=>{
+          const declared=declarations.find(d=>d.seat===seat);
+          return '<span class="igra-claim">'+esc(nameOf(seat))+' · '+(declared?esc(contractName(declared.value)):'Choosing…')+'</span>';
+        }).join('')+'</div>'+
+        (mine?'<div class="group-label">My Igra is</div><div class="auction-bid-line" role="group" aria-label="Declare suit Igra">'+
+          CONTRACTS.filter(c=>c.v>=2&&c.v<=5).map(c=>button(c.n,'igraDeclare',{value:c.v,extra:icon(c)})).join('')+'</div>':'');
     } else if(s.phase==='talon') {
       body=`<div class="actions-title">The talon is revealed</div><div class="actions-subtitle">${esc(nameOf(s.contract.declarer))} won at ${s.contract.minimum}. Two cards are shown publicly before being added to the declarer's hand.</div>
         <div class="talon-preview">${s.talon.map(c=>cardHtml(c,{tiny:true})).join('')}</div>${mine?button('Take the talon','takeTalon',{variant:'primary'}):'<span class="text-muted">Waiting for declarer to take the talon.</span>'}`;
@@ -439,7 +456,9 @@
       case 'pass':send('bid',{action:'pass'});return;
       case 'bid':send('bid',{action:'bid',value:Number(value)});return;
       case 'mogu':send('bid',{action:'mogu'});return;
+      case 'igra':send('bid',{action:'igra'});return;
       case 'hand':send('bid',{action:'hand',value:Number(value)});return;
+      case 'igraDeclare':send('igraDeclare',{value:Number(value)});return;
       case 'takeTalon':send('takeTalon');return;
       case 'discard':send('discard',{cards:selected});selected=[];return;
       case 'declare':send('declare',{value:Number(value)});return;

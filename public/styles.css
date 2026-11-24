@@ -182,3 +182,7 @@
 @media(max-width:560px){
   .auction-bid-line{gap:7px;margin-right:-12px;padding-right:12px}
 }
+
+/* Show which players entered the two-stage Igra auction. */
+.igra-claims{display:flex;flex-wrap:wrap;gap:8px;margin:7px 0 14px}
+.igra-claim{padding:8px 11px;background:#ffffff10;color:#eadab9;border:1px solid #dcc18d60;border-radius:8px;font-size:12px}
