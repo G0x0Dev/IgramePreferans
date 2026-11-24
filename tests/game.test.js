@@ -384,7 +384,8 @@ test('regular Pik without kontra produces refe, unless the refe limit is reached
 });
 test('Sans always opens through declarer (seat +2), and hand contracts add one point',()=>{
   const g=game();
-  auctionAction(g,1,'hand',7);auctionAction(g,2,'pass');auctionAction(g,0,'pass');
+  auctionAction(g,1,'hand',7); // Igra Sans resolves immediately: no opponent can outbid Sans.
+  assert.equal(g.phase,'following');
   follow(g,g.turn,true);follow(g,g.turn,true);
   doubleAction(g,g.turn,'ok');doubleAction(g,g.turn,'ok');
   assert.equal(g.turn,0);
