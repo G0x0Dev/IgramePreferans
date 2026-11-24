@@ -60,3 +60,35 @@ test('touchscreen playable cards do not cast overlapping or sticky hover shadows
   assert.match(fixes,/\.playing-card\[role="button"\]:focus-visible\{/,
     'keyboard focus still has a visible accessible outline');
 });
+
+test('mobile top navigation respects the safe-area inset and has compact height',()=>{
+  assert.match(css,/\.app\{\s*padding-top:calc\(env\(safe-area-inset-top, 0px\) \+ 8px\);/,
+    'phone notch and status bar should not cover the header');
+  assert.match(css,/\.topbar\{\s*min-height:40px;/,
+    'mobile header no longer consumes excessive space');
+  assert.match(css,/\.top-actions \.button\{font-size:10px;min-height:34px;/,
+    'navigation buttons remain tappable in the compact header');
+});
+test('mobile buttons appear before the hand and table without altering desktop layout',()=>{
+  assert.match(app,/class="panel game-stage" data-phase="\$\{esc\(state\.phase\)\}"/,
+    'only the live game stage is reordered');
+  assert.match(app,/\$\{table\(\)\}\$\{hand\(\)\}\$\{actionPanel\(\)\}/,
+    'desktop DOM remains unchanged');
+  assert.match(css,/@media\(max-width:600px\)\{[\s\S]*?\.game-stage\{display:flex;flex-direction:column\}/,
+    'only narrow screens use the action-first stack');
+  assert.match(css,/\.game-stage>\.stage-header\{order:0;/);
+  assert.match(css,/\.game-stage>\.actions\{\s*order:1;/);
+  assert.match(css,/\.game-stage>\.my-hand-area\{order:2;/);
+  assert.match(css,/\.game-stage>\.table-wrap\{order:3;/);
+  assert.match(css,/\.game-stage \.auction-bid-line\{gap:6px;padding:0\}/);
+  assert.match(css,/\.game-stage \.auction-bid-line \.button\{min-height:43px;/);
+  assert.match(css,/\.game-stage \.button\.pass-action\{min-height:45px\}/);
+  assert.match(css,/@media\(max-width:600px\) and \(max-height:650px\)/,
+    'short mobile screens receive more compact controls');
+});
+test('round result buttons and voting show above reports on mobile',()=>{
+  assert.match(css,/\.game-stage\[data-phase="summary"\]>\.actions\{display:flex;flex-direction:column;gap:6px\}/);
+  assert.match(css,/\.game-stage\[data-phase="summary"\]>\.actions>\.action-row,[\s\S]*?order:-3\}/);
+  assert.match(css,/\.game-stage\[data-phase="summary"\]>\.actions>\.settlement-offer\{order:-2\}/);
+  assert.match(css,/\.game-stage\[data-phase="summary"\]>\.actions>\.result-summary\{order:1;/);
+});
