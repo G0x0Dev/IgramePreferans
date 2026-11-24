@@ -20,17 +20,27 @@ const isInt = n => Number.isInteger(n);
 const suit = c => c[0];
 const rank = c => RANKS.indexOf(c.slice(1));
 const contractName = (v, hand = false) => `${hand ? 'Igra-' : ''}${CONTRACTS.find(x => x.value === v)?.name || '?'}`;
-// Display order: group each suit and keep ranks ascending from 7 to Ace.
-// Pik -> Karo -> Tref -> Herc keeps the two red suits apart.
-// If Tref is absent, put Pik between Karo and Herc whenever possible.
-// Suit order does not affect trick-taking rules or the bid order.
+// Group each suit, sort ranks 7 to Ace and alternate black/red suit
+// groups whenever possible. This works when any suit is missing: e.g.
+// Pik + Herc + Tref appears Pik / Herc / Tref (not two blacks together).
+// Suit arrangement is display-only and never changes game or bidding rules.
 export function sortHand(hand) {
   const has = new Set(hand.map(card => suit(card)));
-  const order = has.has('D') && has.has('H') && !has.has('C') && has.has('S')
-    ? ['D', 'S', 'H', 'C']
-    : ['S', 'D', 'C', 'H'];
-  const position = new Map(order.map((s, i) => [s, i]));
-  return hand.sort((a, b) => position.get(suit(a)) - position.get(suit(b)) || rank(a) - rank(b));
+  const black=['S','C'].filter(s=>has.has(s));
+  const red=['D','H'].filter(s=>has.has(s));
+  const order=[];
+  const startRed=red.length>black.length;
+  while(black.length||red.length){
+    if(startRed){
+      if(red.length)order.push(red.shift());
+      if(black.length)order.push(black.shift());
+    }else{
+      if(black.length)order.push(black.shift());
+      if(red.length)order.push(red.shift());
+    }
+  }
+  const position=new Map(order.map((s,i)=>[s,i]));
+  return hand.sort((a,b)=>position.get(suit(a))-position.get(suit(b))||rank(a)-rank(b));
 }
 
 export function makeDeck() { return SUITS.flatMap(s => RANKS.map(r => s + r)); }

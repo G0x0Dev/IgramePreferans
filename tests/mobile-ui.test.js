@@ -73,7 +73,7 @@ test('mobile game buttons dock at bottom within thumb reach, while desktop stays
   assert.match(app,/class="panel game-stage\$\{mobileDock\?' has-mobile-dock':''\}"/,
     'only the active player gets a mobile action dock');
   assert.match(app,/\['auction','igraReveal','talon','discard','contract','following','calling','doubles'\]\.includes\(state\.phase\)/);
-  assert.match(app,/\$\{table\(\)\}\$\{hand\(\)\}\$\{actionPanel\(\)\}/,
+  assert.match(app,/\$\{table\(playedCard\)\}\$\{hand\(\)\}\$\{actionPanel\(\)\}/,
     'original desktop table, hand, actions DOM ordering is preserved');
   assert.match(css,/@media\(max-width:600px\)\{[\s\S]*?\.game-stage\{display:flex;flex-direction:column\}/);
   const dockStyles=css.slice(css.indexOf('/* Thumb-first mobile controls:'));
@@ -96,4 +96,57 @@ test('round result buttons and voting show above reports on mobile',()=>{
   assert.match(css,/\.game-stage\[data-phase="summary"\]>\.actions>\.action-row,[\s\S]*?order:-3\}/);
   assert.match(css,/\.game-stage\[data-phase="summary"\]>\.actions>\.settlement-offer\{order:-2\}/);
   assert.match(css,/\.game-stage\[data-phase="summary"\]>\.actions>\.result-summary\{order:1;/);
+});
+
+test('auction badges display each player\'s most recent public bid or pass by their seat',()=>{
+  const start=app.indexOf('  function auctionChoiceFor(');
+  const end=app.indexOf('  function playerPlace(',start);
+  assert.ok(start>0&&end>start,'auction label helper exists');
+  const names=['Pik','Karo','Herc','Tref','Betl','Sans'];
+  const contractName=value=>names[value-2]||'?';
+  const fn=new Function('contractName',app.slice(start,end)+';return auctionChoiceFor;')(contractName);
+  const g={phase:'auction',auction:{history:[
+    {seat:1,action:'bid',value:2},
+    {seat:2,action:'igra',value:null},
+    {seat:0,action:'pass',value:null}
+  ]}};
+  assert.deepEqual(fn(g,1),{label:'Pik',kind:'bid'});
+  assert.deepEqual(fn(g,2),{label:'Igra',kind:'igra'});
+  assert.deepEqual(fn(g,0),{label:'Dalje',kind:'pass'});
+  g.auction.history.push({seat:1,action:'bid',value:3});
+  assert.deepEqual(fn(g,1),{label:'Karo',kind:'bid'},'last bid is shown');
+  g.auction.history.push({seat:0,action:'hand',value:6});
+  assert.deepEqual(fn(g,0),{label:'Igra Betl',kind:'igra'});
+  g.phase='igraReveal';
+  g.auction.igraDeclarations=[{seat:2,value:5}];
+  assert.deepEqual(fn(g,2),{label:'Igra Tref',kind:'igra'});
+  g.auction.igraDeclarations=[{seat:2,value:null,weaker:true}];
+  assert.deepEqual(fn(g,2),{label:'Moja je manja',kind:'weaker'});
+  g.phase='playing';
+  assert.equal(fn(g,2),null,'old bid badges disappear outside auction phases');
+  assert.ok(app.includes('class="auction-choice'),'seat badges are rendered');
+  assert.ok(css.includes('.seat .auction-choice{'),'seat badges have table styling');
+});
+test('each new trick card drops once, without replaying on normal state updates',()=>{
+  const start=app.indexOf('  function freshPlayedCard(');
+  const end=app.indexOf("  socket.on('state',g=>",start);
+  assert.ok(start>0&&end>start,'animation tracking helper exists');
+  const fresh=new Function(app.slice(start,end)+';return freshPlayedCard;')();
+  const first={seat:0,card:'S7'};
+  const second={seat:1,card:'S8'};
+  const previous={round:2,phase:'playing',trick:[first]};
+  const next={round:2,phase:'playing',trick:[first,second]};
+  assert.deepEqual(fresh(previous,next),second);
+  assert.equal(fresh(next,next),null,'do not animate a card again on a repeat update');
+  assert.equal(fresh(null,next),null,'reconnecting must not animate every card');
+  assert.equal(fresh({...previous,round:1},next),null,'changing rounds must not trigger animation');
+  assert.equal(fresh({...previous,trick:[second]},next),null,'replaced trick is not a new card');
+  assert.deepEqual(fresh(previous,{...next,phase:'summary'}),second,
+    'last played Betl card also animates before the immediate summary');
+  assert.ok(app.includes('render(newlyPlayed);'));
+  assert.ok(app.includes("incoming?' incoming':''"));
+  assert.ok(css.includes('.played.incoming .playing-card{'));
+  assert.ok(css.includes('@keyframes card-drop-on-felt{'));
+  assert.ok(css.includes('.played.incoming .playing-card{animation:none;'),
+    'reduced-motion users should not receive card animations');
 });

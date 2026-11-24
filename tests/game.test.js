@@ -449,6 +449,43 @@ test('red suits stay separated by a black suit if clubs are missing',()=>{
   sortHand(hand);
   assert.deepEqual(hand,['D7','D8','S7','S9','H10','HA']);
 });
+test('red and black suit groups alternate whenever a suit is missing',()=>{
+  const scenarios=[
+    {cards:['S7','C8','H9','H7','CA','S10'],suits:['S','H','C']},
+    {cards:['S7','C8','D9','D7','CA','S10'],suits:['S','D','C']},
+    {cards:['H7','C8','D9','D7','CA','H10'],suits:['D','C','H']},
+    {cards:['S7','H8','D9','D7','HA','S10'],suits:['D','S','H']},
+    {cards:['S7','C8','H9','D7','CA','S10'],suits:['S','D','C','H']}
+  ];
+  for(const {cards,suits} of scenarios){
+    const original=[...cards];
+    sortHand(cards);
+    const uniqueSuitOrder=cards.map(c=>c[0]).filter((v,i,a)=>i===0||v!==a[i-1]);
+    assert.deepEqual(uniqueSuitOrder,suits);
+    assert.deepEqual([...cards].sort(),[...original].sort(),'sorting must keep all cards');
+    for(const suit of uniqueSuitOrder){
+      const ranks=cards.filter(c=>c[0]===suit).map(c=>c.slice(1));
+      assert.deepEqual(ranks,[...ranks].sort((a,b)=>['7','8','9','10','J','Q','K','A'].indexOf(a)-['7','8','9','10','J','Q','K','A'].indexOf(b)));
+    }
+  }
+  const blackOnly=['C7','SA','S7','CA'];
+  sortHand(blackOnly);
+  assert.deepEqual(blackOnly,['S7','SA','C7','CA'],'black suits can touch when no red suit exists');
+});
+test('the public game view contains latest bid, Igra and Dalje choices per seat',()=>{
+  const g=game();
+  auctionAction(g,1,'bid',2);
+  auctionAction(g,2,'igra');
+  auctionAction(g,0,'pass');
+  assert.equal(g.phase,'igraReveal');
+  const publicView=viewFor(g,0,'TABLE');
+  assert.deepEqual(publicView.auction.history.map(h=>({seat:h.seat,action:h.action,value:h.value})),[
+    {seat:1,action:'bid',value:2},
+    {seat:2,action:'igra',value:null},
+    {seat:0,action:'pass',value:null}
+  ]);
+  assert.equal(publicView.auction.igraPlayers[0],2);
+});
 test('ranks stay ascending and no cards are lost even when a hand lacks black suits',()=>{
   const hand=['H10','D8','HA','D7','D9','H7'];
   sortHand(hand);
