@@ -173,7 +173,7 @@
   function matchHistory() {
     if(state.mode==='solo')return `<section class="panel panel-pad match-history">
       <span class="eyebrow">Training only</span><h3 class="side-title">Practice game</h3>
-      <p class="muted-note">Your match score is shown above. Solo results do not affect your five-friend leaderboard or saved match history.</p>
+
       ${button('Restart practice','restartSolo',{variant:'small subtle'})}
     </section>`;
     const rows=state.leaderboard||[],games=state.history||[];
@@ -182,13 +182,13 @@
       ${rows.length?`<table class="score-table standings-table"><thead><tr><th>Place</th><th>Player</th><th>Games</th><th>Wins</th><th>Total score</th></tr></thead><tbody>
       ${rows.map(p=>`<tr class="${p.position===1?'leader-row':''}"><td>#${p.position}</td><td>${esc(p.name)}</td><td>${p.games}</td><td>${p.wins}</td><td class="number">${p.total}</td></tr>`).join('')}</tbody></table>`
       :'<p class="muted-note">No finished matches yet. Scores are added after a match ends.</p>'}
-      <p class="muted-note">Lower cumulative score leads. All finished matches are added by player name; games played and wins are shown because some friends may play more matches.</p>
+      
       <div class="action-row">${button('Download results backup','exportHistory',{variant:'small'})}${state.seat===null?'':button('Restore backup','importHistory',{variant:'small subtle'})}</div>
       <h4 class="history-title">Finished games (${games.length})</h4>
       ${games.length?`<div class="history-list">${games.slice(0,12).map((m,i)=>`<div class="history-match"><strong>Game ${games.length-i} · ${esc(new Date(m.at).toLocaleDateString())}</strong><small>${esc(m.players.map(p=>p.name+': '+p.score).join(' · '))}</small></div>`).join('')}</div>`:
-      '<p class="muted-note">Completed games will appear here and count toward the standings.</p>'}
-      ${games.length>12?'<p class="muted-note">Download the backup to see all saved games.</p>':''}
-      <p class="muted-note">For lasting storage on Render Free, keep a downloaded backup. Results also remain in this browser and can be restored if the server resets.</p>
+      '<p class="muted-note">No finished games</p>'}
+
+      
     </section>`;
   }
   function undoBanner() {
@@ -200,7 +200,7 @@
       ${myTurn&&!responded?`<div class="action-row">${button('Approve undo','approveUndo',{variant:'primary'})}${button('Reject undo','rejectUndo',{variant:'subtle'})}</div>`:
         responded?'<p>Approved — waiting for the other player.</p>':'<p>Waiting for both other players to decide.</p>'}</div>`;
     }
-    return state.canUndo ? `<div class="undo-trigger">${button('Undo my last card · ask both players','requestUndo',{variant:'small subtle'})}<span class="muted-note">Available briefly after your last play. Both opponents must approve.</span></div>`:'';
+    return state.canUndo ? `<div class="undo-trigger">${button('Undo my last card · ask both players','requestUndo',{variant:'small subtle'})}</div>`:'';
   }
   function lobby() {
     if(state.mode==='solo')return `<div class="app">${header()}<main class="lobby">
@@ -271,23 +271,28 @@
       <div class="center-play">${cards.length?[
         {seat:left,position:'pos-left'}, {seat:right,position:'pos-right'}, {seat:me,position:'pos-me'}
       ].filter(p=>atSeat(p.seat)).map(p=>`<div class="played ${p.position}">${cardHtml(atSeat(p.seat),{tiny:true})}</div>`).join(''):
-      `<div class="felt-hint">${state.phase==='trickReview'?'Preparing next trick…':state.contract?esc(contractName(state.contract.value,state.contract.hand)):'Bid to begin the round'}</div>`}</div></div>
+      ''}</div></div>
       <div class="table-note">${status}${state.multiplier>1?` · ×${state.multiplier} stakes`:''}</div></div>`;
   }
   function hand() {
-    if(state.seat===null)return `<section class="my-hand-area"><div class="hand-head"><strong>Watching as ${esc(state.myName)}</strong></div><p class="muted-note">You can watch public tricks and scores. Players' private cards remain hidden.</p></section>`;
+    if(state.seat===null)return `<section class="my-hand-area"><div class="hand-head"><strong>Spectating</strong></div></section>`;
     const canPlay=state.phase==='playing'&&state.turn===state.seat;
     const canDiscard=state.phase==='discard'&&state.turn===state.seat;
     const valid=new Set(state.legal);
-    const cards=state.hands.map(c=>cardHtml(c,{disabled:canPlay?!valid.has(c):false,selectable:canDiscard||(canPlay&&valid.has(c)),selectedCard:selected.includes(c)})).join('');
-    const hint=canDiscard?'Select exactly two cards to set aside privately.':canPlay?'Choose a highlighted playable card.':'Your cards stay private from other players.';
-    return `<section class="my-hand-area"><div class="hand-head"><strong>Your hand · ${state.hands.length} cards</strong><span>${esc(hint)}</span></div><div class="hand">${cards||'<div class="empty-hand">Your cards have all been played.</div>'}</div></section>`;
+    const cards=state.hands.map((c,i)=>{
+      const isSelected=selected.includes(c);
+      const newSuit=i===0||state.hands[i-1]?.[0]!==c[0];
+      const face=cardHtml(c,{disabled:canPlay?!valid.has(c):false,
+        selectable:canDiscard||(canPlay&&valid.has(c)),selectedCard:isSelected});
+      return `<div class="hand-card-slot ${isSelected?'is-selected':''} ${newSuit?'suit-start':''}" style="--card-index:${i+1}">${face}</div>`;
+    }).join('');
+    return `<section class="my-hand-area"><div class="hand-head"><strong>Your hand · ${state.hands.length} cards</strong></div><div class="hand" aria-label="Your playing cards">${cards||'<div class="empty-hand">No cards left</div>'}</div></section>`;
   }
   function contractButtons(list,action,hand=false) {
     return `<div class="button-group">${list.map(c=>button(`${hand?'Igra-':''}${c.n}`,action,{value:c.v,extra:icon(c)})).join('')}</div>`;
   }
   function actionPanel() {
-    if(state.seat===null && state.phase!=='summary')return `<div class="actions"><div class="actions-title">Waiting for the next match</div><div class="actions-subtitle">Enjoy watching! Three players are at the table. You can take a seat before the next match starts.</div>${undoBanner()}</div>`;
+    if(state.seat===null && state.phase!=='summary')return `<div class="actions"><div class="actions-title">Spectating</div>${undoBanner()}</div>`;
     const mine=state.turn===state.seat, s=state;
     let body='';
     if(s.phase==='auction') {
@@ -297,14 +302,13 @@
       const choices=[
         ...(next?[button(next.n,'bid',{value:next.v,extra:icon(next)})]:[]),
         ...(options.igra?[button('Igra','igra',{variant:'primary'})]:[]),
-        ...(options.betl?[button('Igra Betl','hand',{value:6})]:[]),
-        ...(options.sans?[button('Igra Sans','hand',{value:7})]:[])
+        ...(options.betl?[button('Igra Betl','hand',{value:6,variant:'igra-betl'})]:[]),
+        ...(options.sans?[button('Igra Sans','hand',{value:7,variant:'igra-sans'})]:[])
       ];
       const highest=a.handMode==='suit'?'Igra (suit yet to be declared)':
         a.highSeat===null?'None':contractName(a.bid,a.hand);
       if(!mine)body='<div class="actions-title">'+esc(nameOf(s.turn))+
-        ' is bidding</div><div class="actions-subtitle">Current bid: '+esc(highest)+
-        '. '+(a.handMode==='suit'?'Other players may also announce Igra or choose Igra Betl/Sans.':'Await the next action.')+'</div>';
+        ' is bidding</div>';
       else{
         body='<div class="actions-title">Your turn to bid</div><div class="actions-subtitle">'+
           (a.handMode==='suit'?'Someone announced Igra. You may also say Igra; suit contracts are revealed afterward.':
@@ -313,8 +317,9 @@
         if(choices.length)body+='<div class="group-label">Available bids</div><div class="auction-bid-line" role="group" aria-label="Available bids">'+choices.join('')+'</div>';
         if(!a.hand && a.highSeat!==null && a.highSeat!==s.seat && a.priority===s.seat)
           body+='<div class="action-row" style="margin-top:9px">'+button('Mogu '+a.bid,'mogu',{variant:'active'})+'</div>';
-        body+='<div class="soft-divider"></div>'+button('Dalje · Pass','pass',{variant:'subtle'});
+        body+='<div class="pass-row">'+button('Dalje · Pass','pass',{variant:'pass-action'})+'</div>';
       }
+      body='<div class="bid-status">Current: '+esc(highest)+'</div>'+body;
     } else if(s.phase==='igraReveal') {
       const a=s.auction;
       const declarations=a.igraDeclarations||[];
@@ -354,8 +359,7 @@
     } else if(s.phase==='doubles') {
       const labels=['Kontra','Rekontra','Subkontra'];
       const stage=s.doubleStage;
-      body=`<div class="actions-title">${mine?'Raise the stakes?':`${esc(nameOf(s.turn))} decides the stakes`}</div>
-        <div class="actions-subtitle">Current multiplier ×${s.multiplier}. ${stage===0?'Only an eligible defender may give Kontra; invited players cannot. Plain Pik requires Kontra to be played.':'Each new counter doubles all bula and supa changes. The defender giving Kontra takes sole scoring responsibility.'}</div>
+      body=`<div class="actions-title">${mine?'Raise the stakes?':`${esc(nameOf(s.turn))} decides the stakes`} · ×${s.multiplier}</div>
         ${mine?`<div class="action-row">${button('Moze · Accept','doubleOk')}${s.availableDoubles?.includes(['kontra','rekontra','subkontra'][stage])?button(labels[stage],'doubleRaise',{variant:'primary'}):''}</div>`:''}`;
     } else if(s.phase==='playing') {
       body=`<div class="actions-title">${mine?'Your turn — play one card':`${esc(nameOf(s.turn))} is playing`}</div><div class="actions-subtitle">${mine?'You must follow the led suit if possible, or play trump if void in a trump contract. Only legal cards can be selected.':'Follow suit, trump when void in trump games, and capture tricks to meet your contract.'}</div>`;
@@ -381,6 +385,8 @@
           ${button('End match by agreement · Otpisivanje','requestSettlement',{variant:'subtle'})}</div>`;
       }
     }
+    // Keep the playable actions and essential status; discard long how-to text.
+    body=body.replace(/<div class="actions-subtitle">[\s\S]*?<\/div>/g,'');
     return `<div class="actions">${s.undoRequest?undoBanner():body}${!s.undoRequest?undoBanner():''}</div>`;
   }
   function sidebar() {
@@ -390,14 +396,12 @@
       ${g.players.map((p,i)=>`<tr class="${i===g.seat?'own':''} ${g.finalScores[i]===Math.min(...g.finalScores)?'leader-row':''}"><td><i class="tiny-online ${p?.online?'':'off'}"></i>${esc(p?.name||'—')} ${g.finalScores[i]===Math.min(...g.finalScores)?'★':''}</td>
       <td class="number ${g.scores.bula[i]<0?'good':''}">${g.scores.bula[i]}</td><td>${g.scores.refe[i]}</td><td class="number ${g.finalScores[i]<0?'good':'bad'}">${g.finalScores[i]}</td></tr>`).join('')}</tbody></table>
       <div class="score-mini"><span>Current leader: ${esc(g.players[g.finalScores.indexOf(Math.min(...g.finalScores))]?.name||'—')}</span><strong>${Math.min(...g.finalScores)}</strong></div><div class="score-mini"><span>Combined bula remaining</span><strong>${g.scores.bula.reduce((n,x)=>n+x,0)}</strong></div>
-      <p class="score-key">Lower final scores are better. Final = 10 × bula + supe owed to opponents − supe earned against them. A refe doubles your next played contract.</p>
+      
       <div class="soft-divider"></div><div class="group-label">Supa ledger · row scores against column</div>
       <table class="supa-ledger"><thead><tr><th>From \ Against</th>${g.players.map(p=>`<th>${esc((p?.name||'?').slice(0,8))}</th>`).join('')}</tr></thead><tbody>
       ${g.scores.supe.map((row,i)=>`<tr><td>${esc(nameOf(i).slice(0,11))}</td>${row.map((n,j)=>`<td>${i===j?'—':n}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
       <div class="panel panel-pad"><span class="eyebrow">Table history</span><h3 class="side-title">Recent actions</h3><ul class="log">${[...g.log].reverse().map(s=>`<li>${esc(s)}</li>`).join('')||'<li>Waiting for the first deal.</li>'}</ul></div>
-      <div class="panel panel-pad rules-link"><span class="eyebrow">Playing rules</span><h3 class="side-title">Need a refresher?</h3>
-        This game follows the <a href="https://www.preferansklub.com/pravila1.htm" target="_blank" rel="noopener noreferrer">Preferans Klub rules</a>, including Mogu, Betl, Sans, Kontra, and the bula/supa scorecard. Play the five-friend table online, or use solo practice against two computer opponents.
-      </div>${matchHistory()}</aside>`;
+      ${matchHistory()}</aside>`;
   }
   function gameScreen() {
     const subtitle=state.seat===null?'Watching · waiting to play':state.turn===null?'Waiting for the next step':`${nameOf(state.turn)}${state.turn===state.seat?' (you)':''} to act`;
