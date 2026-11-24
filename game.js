@@ -133,6 +133,18 @@ function endAuction(g) {
   if (a.hand) { g.phase='following'; g.turn=null; beginFollowing(g); }
   else { g.phase='talon'; g.turn=won; }
 }
+// The three opening bidding turns offer Igra contracts alongside the ordinary
+// next bid. After each player has had an opening turn, the auction only offers
+// the next ordinary bid, eligible Mogu, or Pass.
+export function availableAuctionBids(g,seat) {
+  if(g.phase!=='auction' || g.turn!==seat || g.auction.passed[seat])
+    return {ordinary:null,hand:[]};
+  const a=g.auction;
+  return {
+    ordinary: !a.hand && a.bid<7 ? a.bid+1 : null,
+    hand: a.history.length<3 ? CONTRACTS.filter(c=>!a.hand || c.value>a.handValue).map(c=>c.value):[]
+  };
+}
 export function auctionAction(g, seat, action, value = null) {
   assertTurn(g,seat,'auction');
   const a = g.auction;
@@ -163,6 +175,7 @@ export function auctionAction(g, seat, action, value = null) {
       a.highSeat = seat;
       log(g,`${player}: Mogu ${a.bid}.`); break;
     case 'hand':
+      assert(a.history.length<3, 'Igra may only be declared in the first bidding round.');
       assert(isInt(value) && value >= 2 && value <= 7, 'Hand game must be Pik through Sans.');
       if (a.hand) assert(value > a.handValue, 'You must declare a higher hand game.');
       // A hand game wins against ordinary bidding and other lower hand games.
@@ -431,6 +444,7 @@ export function viewFor(g,seat,roomCode) {
     hands:own?g.hands[seat]:[], handCounts:g.hands.map(h=>h.length),
     talonCount:g.talon.length, talon:g.phase==='talon' ? [...g.talon] : [],
     auction:g.auction ? {...g.auction} : null,
+    auctionOptions:own ? availableAuctionBids(g,seat) : {ordinary:null,hand:[]},
     contract:g.contract?{...g.contract}:null,
     follows:g.follows,followMessages:g.followMessages,caller:g.caller,invited:g.invited,doubler:g.doubler,doubleStage:g.doubleStage,multiplier:g.multiplier,
     turn:g.turn,firstBidder:g.firstBidder,trick:g.trick,lastTrick:g.lastTrick,availableDoubles:own?allowedDoubles(g,seat):[],

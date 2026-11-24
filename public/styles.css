@@ -168,3 +168,17 @@
   .match-history .standings-table td,.match-history .standings-table th{font-size:10px;padding:8px 3px}
   .undo-notice{margin:10px 0;padding:12px}
 }
+
+/* Keep first-round ordinary and Igra offers in one line; scroll on narrow screens. */
+.auction-bid-line{
+  display:flex;flex-wrap:nowrap;gap:8px;
+  overflow-x:auto;overscroll-behavior-inline:contain;
+  padding:4px 2px 12px;scrollbar-width:thin;
+  -webkit-overflow-scrolling:touch;
+}
+.auction-bid-line .button{
+  flex:0 0 auto;white-space:nowrap;
+}
+@media(max-width:560px){
+  .auction-bid-line{gap:7px;margin-right:-12px;padding-right:12px}
+}
