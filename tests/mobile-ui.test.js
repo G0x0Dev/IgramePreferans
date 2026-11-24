@@ -69,22 +69,27 @@ test('mobile top navigation respects the safe-area inset and has compact height'
   assert.match(css,/\.top-actions \.button\{font-size:10px;min-height:34px;/,
     'navigation buttons remain tappable in the compact header');
 });
-test('mobile buttons appear before the hand and table without altering desktop layout',()=>{
-  assert.match(app,/class="panel game-stage" data-phase="\$\{esc\(state\.phase\)\}"/,
-    'only the live game stage is reordered');
+test('mobile game buttons dock at bottom within thumb reach, while desktop stays unchanged',()=>{
+  assert.match(app,/class="panel game-stage\$\{mobileDock\?' has-mobile-dock':''\}"/,
+    'only the active player gets a mobile action dock');
+  assert.match(app,/\['auction','igraReveal','talon','discard','contract','following','calling','doubles'\]\.includes\(state\.phase\)/);
   assert.match(app,/\$\{table\(\)\}\$\{hand\(\)\}\$\{actionPanel\(\)\}/,
-    'desktop DOM remains unchanged');
-  assert.match(css,/@media\(max-width:600px\)\{[\s\S]*?\.game-stage\{display:flex;flex-direction:column\}/,
-    'only narrow screens use the action-first stack');
-  assert.match(css,/\.game-stage>\.stage-header\{order:0;/);
-  assert.match(css,/\.game-stage>\.actions\{\s*order:1;/);
-  assert.match(css,/\.game-stage>\.my-hand-area\{order:2;/);
-  assert.match(css,/\.game-stage>\.table-wrap\{order:3;/);
-  assert.match(css,/\.game-stage \.auction-bid-line\{gap:6px;padding:0\}/);
-  assert.match(css,/\.game-stage \.auction-bid-line \.button\{min-height:43px;/);
-  assert.match(css,/\.game-stage \.button\.pass-action\{min-height:45px\}/);
-  assert.match(css,/@media\(max-width:600px\) and \(max-height:650px\)/,
-    'short mobile screens receive more compact controls');
+    'original desktop table, hand, actions DOM ordering is preserved');
+  assert.match(css,/@media\(max-width:600px\)\{[\s\S]*?\.game-stage\{display:flex;flex-direction:column\}/);
+  const dockStyles=css.slice(css.indexOf('/* Thumb-first mobile controls:'));
+  assert.ok(dockStyles.length>1500);
+  assert.match(dockStyles,/\.game-stage>\.table-wrap\{order:1;/);
+  assert.match(dockStyles,/\.game-stage>\.my-hand-area\{order:2\}/);
+  assert.match(dockStyles,/\.game-stage>\.actions\{\s*order:3;/);
+  assert.match(dockStyles,/\.game-stage\.has-mobile-dock>\.actions\{\s*position:fixed;/);
+  assert.match(dockStyles,/bottom:0;/,'dock must sit at the bottom of the screen');
+  assert.match(dockStyles,/env\(safe-area-inset-bottom,0px\)/,
+    'dock stays above the phone home indicator');
+  assert.match(dockStyles,/max-height:62dvh;/,'dock does not occupy the whole viewport');
+  assert.match(dockStyles,/overflow-y:auto;/,'short screens can scroll within the dock if necessary');
+  assert.match(dockStyles,/\.game-stage\.has-mobile-dock\{\s*padding-bottom:/,
+    'the table and cards can scroll above the floating panel');
+  assert.match(dockStyles,/\.game-stage\.has-mobile-dock \.auction-bid-line\{[\s\S]*?grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 });
 test('round result buttons and voting show above reports on mobile',()=>{
   assert.match(css,/\.game-stage\[data-phase="summary"\]>\.actions\{display:flex;flex-direction:column;gap:6px\}/);
