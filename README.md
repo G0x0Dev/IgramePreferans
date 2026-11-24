@@ -43,6 +43,12 @@ On the welcome page, choose **Play solo vs 2 computers** instead of joining the 
 - Press **Back to friends** to return to the shared table. Existing friend sessions are kept separately in browser storage.
 - Server restarts clear active solo games, just as they clear active multiplayer rounds.
 
+## Mobile gameplay
+
+The game table uses a compact phone layout with **overlapping cards** so all 10–12 hand cards remain visible on small screens without horizontal card scrolling. Tap the exposed left edge (rank and suit) of a card to play or select it; a selected card rises above its neighbors. The bidding controls display in two columns on phones.
+
+The in-game rules tutorial, hand hints and long instructional paragraphs have been removed from the playing screen; actions, bid status, results, and necessary undo/otpisivanje consent messages remain visible. **Dalje / Pass** is a prominent orange action, **Igra Betl** is purple and **Igra Sans** is teal-blue. Desktop retains the conventional spaced card layout.
+
 ## Rules implemented
 
 - **French-suited playing cards:** 32 cards (7, 8, 9, 10, J, Q, K, A in ♠ ♦ ♥ ♣) with French suit pip layouts, traditional red/black coloring, and decorative J/Q/K court faces; three hands of ten, two cards in the talon. Dealing and first bidder rotate each round. Hands display **one suit at a time, with ranks ascending from 7 to Ace**, in the order **Pik (♠), Karo (♦), Tref (♣), Herc (♥)**. Karo and Herc are separated by Tref; if Tref is absent and Pik is available, Pik sits between the two red suits. Display order refreshes when cards are added or removed.
