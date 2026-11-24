@@ -75,7 +75,7 @@ export function botMove(g){
       let declaration=best.value;
       if(top>best.value)declaration='weaker';
       else if(g.auction.igraPlayers[0]!==seat && best.value===2)
-        declaration=top>2?'weaker':3;
+        declaration=top>=2?'weaker':3;
       igraDeclare(g,seat,declaration);
       break;
     }
