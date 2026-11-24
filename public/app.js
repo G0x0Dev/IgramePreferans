@@ -244,7 +244,11 @@
     const role=state.contract ? (i===state.contract.declarer?'Declarer':state.active.length?state.active.includes(i)?'Defender':'Sitting out':state.follows[i]===false?'Declined':state.follows[i]===true?'Defender':'') : i===state.dealer?'Dealer':'';
     const tricks=state.tricks[i];
     const response=state.followMessages?.[i];
-    const responseText=response && i!==state.contract?.declarer ? ` · “${esc(response)}”` : '';
+    // If Kontra is declared, any earlier "Ne" / "Ne bi" was overridden.
+    const calledIn=state.doubler!==null && i!==state.contract?.declarer &&
+      (response==='Ne'||response==='Ne bi');
+    const responseText=calledIn?' · Playing by Kontra':
+      response && i!==state.contract?.declarer ? ` · “${esc(response)}”` : '';
     return `<div class="seat ${pos} ${turn?'current':''}"><div class="avatar">${esc(p?.name?.charAt(0)?.toUpperCase()||'?')}</div>
       <span class="person">${esc(p?.name||'—')}${me?' (you)':''}</span><span class="info">${esc(role)}${responseText}${role&&state.contract?' · ':''}${state.contract?`${tricks} trick${tricks!==1?'s':''}`:''}</span>
       ${!me&&state.handCounts[i]?`<div class="mini-backs"><span class="mini-back"></span><span class="mini-back"></span><span class="mini-back"></span><span class="mini-back"></span></div>`:''}</div>`;
@@ -339,10 +343,10 @@
       const labels=['Kontra','Rekontra','Subkontra'];
       const stage=s.doubleStage;
       body=`<div class="actions-title">${mine?'Raise the stakes?':`${esc(nameOf(s.turn))} decides the stakes`}</div>
-        <div class="actions-subtitle">Current multiplier ×${s.multiplier}. ${stage===0?'Only an eligible defender may give Kontra; invited players cannot. Plain Pik requires Kontra to be played.':'Each new counter doubles all bula and supa changes. The defender giving Kontra takes sole scoring responsibility.'}</div>
+        <div class="actions-subtitle">Current multiplier ×${s.multiplier}. ${stage===0?'Only an eligible defender may give Kontra; invited players cannot. Once Kontra is called, all three must play, including players who said Ne or Ne bi. Plain Pik requires Kontra to be played.':'All three players must play after Kontra, including anyone who declined. Each counter doubles the stakes, and the Kontra defender takes sole scoring responsibility.'}</div>
         ${mine?`<div class="action-row">${button('Moze · Accept','doubleOk')}${s.availableDoubles?.includes(['kontra','rekontra','subkontra'][stage])?button(labels[stage],'doubleRaise',{variant:'primary'}):''}</div>`:''}`;
     } else if(s.phase==='playing') {
-      body=`<div class="actions-title">${mine?'Your turn — play one card':`${esc(nameOf(s.turn))} is playing`}</div><div class="actions-subtitle">${mine?'You must follow the led suit if possible, or play trump if void in a trump contract. Only legal cards can be selected.':'Follow suit, trump when void in trump games, and capture tricks to meet your contract.'}</div>`;
+      body=`<div class="actions-title">${mine?'Your turn — play one card':`${esc(nameOf(s.turn))} is playing`}</div><div class="actions-subtitle">${mine?'You must follow the led suit if possible, or play trump if void in a trump contract. Only legal cards can be selected.':'Follow suit, trump when void in trump games, and capture tricks to meet your contract.'}${s.doubler!==null?' Kontra: all three players must play.':''}</div>`;
     } else if(s.phase==='trickReview') {
       body=`<div class="actions-title">${esc(nameOf(s.lastTrick?.winner))} wins trick ${s.trickNumber}</div><div class="actions-subtitle">The winner leads the next trick. The board will continue automatically.</div>`;
     } else if(s.phase==='summary') {

@@ -321,14 +321,21 @@ function beginPlay(g) {
     g.tricks[g.contract.declarer]=10;
     finishRound(g,'Pik without kontra: no more refe can be recorded, so declarer passes automatically.'); return;
   }
-  g.active=[g.contract.declarer,...otherSeats(g.contract.declarer).filter(i=>g.follows[i])];
-  if(g.doubler!==null) g.active=[0,1,2];
+  // Kontra overrides earlier Ne / Ne bi responses: every seat must
+  // participate in every trick, even if a defender originally sat out.
+  if(g.doubler!==null) {
+    g.follows=[true,true,true];
+    g.active=[0,1,2];
+  } else {
+    g.active=[g.contract.declarer,...otherSeats(g.contract.declarer).filter(i=>g.follows[i])];
+  }
   g.phase='playing'; g.trick=[]; g.trickNumber=0;
   // Sans always starts with the defender to the declarer's left (seat +2).
   g.turn=g.contract.value===7
     ? rotationFrom(mod(g.contract.declarer+2), g.active)
     : rotationFrom(g.firstBidder,g.active);
   log(g,`${contractName(g.contract.value,g.contract.hand)} begins. ${publicName(g,g.turn)} leads.`);
+  if(g.doubler!==null) log(g,'Kontra requires all three players to play, including anyone who previously declined.');
 }
 export function doubleAction(g,seat,action) {
   assertTurn(g,seat,'doubles');
@@ -339,8 +346,9 @@ export function doubleAction(g,seat,action) {
       assert(seat!==g.invited, 'An invited partner can play tricks but cannot give Kontra or earn defensive points.');
       assert(g.follows[seat]===true, 'Only a participating defender may give kontra.');
       g.doubler=seat; g.multiplier=2; g.doubleStage=1; g.turn=dec;
-      g.follows= [true,true,true];
-      log(g,`${publicName(g,seat)}: KONTRA! (×2)`);
+      g.follows=[true,true,true];
+      g.active=[0,1,2]; // Enforced as soon as Kontra is announced.
+      log(g,`${publicName(g,seat)}: KONTRA! (×2) All three players must play.`);
     } else if(action==='ok') {
       log(g,`${publicName(g,seat)}: Moze.`);
       if(seat===defenders[0]) g.turn=defenders[1];
