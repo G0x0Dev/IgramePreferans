@@ -213,7 +213,12 @@
       <div class="lobby-settings"><div><label for="start-bula">Bula (50–120)</label>
       <select id="start-bula" data-settings>${Array.from({length:8},(_,i)=>50+i*10).map(v=>`<option ${state.settings.startBula===v?'selected':''} value="${v}">${v} bula</option>`).join('')}</select></div>
       <div><label for="max-refe">Refe (2–4)</label><select id="max-refe" data-settings>
-      ${[2,3,4].map(v=>`<option ${state.settings.maxRefe===v?'selected':''} value="${v}">${v} per player</option>`).join('')}</select></div></div></section>
+      ${[2,3,4].map(v=>`<option ${state.settings.maxRefe===v?'selected':''} value="${v}">${v} per player</option>`).join('')}</select></div></div>
+            <div class="pik-rule"><label for="pik-no-kontra">Pik without Kontra</label>
+      <select id="pik-no-kontra" data-settings ${state.mode==='friends'&&!isHost?'disabled':''}>
+      <option value="declarer" ${state.settings.pikNoKontra!=='all'?'selected':''}>Refe to declarer (default)</option>
+      <option value="all" ${state.settings.pikNoKontra==='all'?'selected':''}>Refe to all eligible players</option>
+      </select><p class="muted-note">If no eligible refe can be recorded, the Pik declarer automatically passes. No cards are played.</p></div></section>
       <div class="lobby-foot"><div class="action-row" style="justify-content:center">
       ${button('Deal cards · Start practice','start',{variant:'primary large'})}
       ${button('Back to friends','exitSolo',{variant:'subtle'})}</div></div>
@@ -235,6 +240,11 @@
             <section class="panel panel-pad" style="margin-top:24px"><span class="eyebrow">Before the deal</span><h3 class="side-title">Choose bula & refe</h3>
       <div class="lobby-settings"><div><label for="start-bula">Bula (50–120)</label><select id="start-bula" data-settings ${!isHost?'disabled':''}>${Array.from({length:8},(_,i)=>50+i*10).map(v=>`<option ${state.settings.startBula===v?'selected':''} value="${v}">${v} bula</option>`).join('')}</select></div>
       <div><label for="max-refe">Refe (2–4)</label><select id="max-refe" data-settings ${!isHost?'disabled':''}>${[2,3,4].map(v=>`<option ${state.settings.maxRefe===v?'selected':''} value="${v}">${v} per player</option>`).join('')}</select></div></div>
+            <div class="pik-rule"><label for="pik-no-kontra">Pik without Kontra</label>
+      <select id="pik-no-kontra" data-settings ${state.mode==='friends'&&!isHost?'disabled':''}>
+      <option value="declarer" ${state.settings.pikNoKontra!=='all'?'selected':''}>Refe to declarer (default)</option>
+      <option value="all" ${state.settings.pikNoKontra==='all'?'selected':''}>Refe to all eligible players</option>
+      </select><p class="muted-note">If no eligible refe can be recorded, the Pik declarer automatically passes. No cards are played.</p></div>
       <p class="muted-note">Any seated player can choose values before starting. Defaults: 100 bula and 2 refe. The game ends when combined bula reaches zero or below.</p></section>
       <div class="lobby-foot">${isHost?button('Start match · Deal the cards','start',{variant:'primary large',disabled:!canStart}):'<p class="text-muted">You are waiting. Take an open seat to play, or watch when the match begins.</p>'}</div>
       ${matchHistory()}</main></div>`;
@@ -309,15 +319,21 @@
       const a=s.auction;
       const declarations=a.igraDeclarations||[];
       const claimants=a.igraPlayers||[];
+      const highest=declarations.filter(d=>Number.isInteger(d.value))
+        .reduce((best,d)=>Math.max(best,d.value),0);
+      const firstClaimant=claimants[0]===s.seat;
+      const allowed=CONTRACTS.filter(c=>c.v>=2&&c.v<=5&&(firstClaimant||c.v>2));
       body='<div class="actions-title">'+(mine?'Declare your Igra suit game':esc(nameOf(s.turn))+' is declaring Igra')+
-        '</div><div class="actions-subtitle">Each Igra player directly declares Pik, Karo, Herc or Tref (no step-by-step raises). Highest game wins; an earlier Igra claimant wins a tie. Talon is skipped.</div>'+
+        '</div><div class="actions-subtitle">Igra claimants declare their suit games directly. The highest game wins and the earlier claimant wins a tie. Only the first Igra claimant may declare Pik; later players can concede a weaker suit without revealing it.</div>'+
         '<div class="group-label">Igra players</div><div class="igra-claims">'+
         claimants.map(seat=>{
           const declared=declarations.find(d=>d.seat===seat);
-          return '<span class="igra-claim">'+esc(nameOf(seat))+' · '+(declared?esc(contractName(declared.value)):'Choosing…')+'</span>';
+          const answer=declared?(declared.weaker?'My game is weaker':contractName(declared.value)):'Choosing…';
+          return '<span class="igra-claim">'+esc(nameOf(seat))+' · '+esc(answer)+'</span>';
         }).join('')+'</div>'+
         (mine?'<div class="group-label">My Igra is</div><div class="auction-bid-line" role="group" aria-label="Declare suit Igra">'+
-          CONTRACTS.filter(c=>c.v>=2&&c.v<=5).map(c=>button(c.n,'igraDeclare',{value:c.v,extra:icon(c)})).join('')+'</div>':'');
+          allowed.map(c=>button(c.n,'igraDeclare',{value:c.v,extra:icon(c)})).join('')+
+          (highest>2?button('Moja je manja · Weaker','igraWeaker',{variant:'subtle'}):'')+'</div>':'');
     } else if(s.phase==='talon') {
       body=`<div class="actions-title">The talon is revealed</div><div class="actions-subtitle">${esc(nameOf(s.contract.declarer))} won at ${s.contract.minimum}. Two cards are shown publicly before being added to the declarer's hand.</div>
         <div class="talon-preview">${s.talon.map(c=>cardHtml(c,{tiny:true})).join('')}</div>${mine?button('Take the talon','takeTalon',{variant:'primary'}):'<span class="text-muted">Waiting for declarer to take the talon.</span>'}`;
@@ -352,7 +368,18 @@
       if(s.finished) {
         const standings=s.finalScores.map((score,i)=>({i,score})).sort((a,b)=>a.score-b.score);
         body+=`<div class="winning-banner">Match finished! ${esc(nameOf(standings[0].i))} has the lowest final score (${standings[0].score}).</div><div class="action-row" style="margin-top:17px">${button(s.mode==='solo'?'Play a new practice match':'Set up next match','newMatch',{variant:'primary large'})}</div>`;
-      } else body+=s.seat===null?'<p class="muted-note">Waiting for the players to deal the next round.</p>':button('Deal next round','nextRound',{variant:'primary large'});
+      } else if(s.settlementRequest){
+        const req=s.settlementRequest,approvals=req.approvals.filter(Boolean).length;
+        const canVote=s.seat!==null&&s.seat!==req.seat&&!req.approvals[s.seat];
+        body+=`<div class="settlement-notice"><strong>Otpisivanje · ${esc(nameOf(req.seat))} proposes ending the match</strong>
+          <p>${approvals}/3 players approved. All bula will be adjusted to total zero, while supa stays unchanged. The next deal is paused until the vote ends.</p>
+          ${canVote?`<div class="action-row">${button('Agree to end match','settleYes',{variant:'primary'})}${button('Keep playing','settleNo',{variant:'subtle'})}</div>`:
+          '<p>Waiting for the remaining votes or the 30-second timeout.</p>'}</div>`;
+      } else {
+        body+=s.seat===null?'<p class="muted-note">Waiting for the players to deal the next round.</p>':button('Deal next round','nextRound',{variant:'primary large'});
+        if(s.canSettle)body+=`<div class="settlement-offer"><p class="muted-note">Finish this match by otpisivanje: subtract bula equally (rounding any extra toward the highest bula), preserving supa. Both other players must approve.</p>
+          ${button('End match by agreement · Otpisivanje','requestSettlement',{variant:'subtle'})}</div>`;
+      }
     }
     return `<div class="actions">${s.undoRequest?undoBanner():body}${!s.undoRequest?undoBanner():''}</div>`;
   }
@@ -425,6 +452,13 @@
         });
         return;
       }
+      case 'requestSettlement':case 'settleYes':case 'settleNo':{
+        if(a==='requestSettlement'&&!confirm('Ask both other players to end this match by otpisivanje? The remaining bula will be settled to zero and the result saved.'))return;
+        const event=a==='requestSettlement'?'requestSettlement':'voteSettlement';
+        const payload=a==='requestSettlement'?{}:{approve:a==='settleYes'};
+        socket.emit(event,payload,answer=>{if(!answer?.ok)toast(answer?.error||'The settlement vote could not be completed.');});
+        return;
+      }
       case 'requestUndo':case 'approveUndo':case 'rejectUndo':{
         const event=a==='requestUndo'?'requestUndo':'voteUndo';
         const payload=a==='requestUndo'?{}:{approve:a==='approveUndo'};
@@ -459,6 +493,7 @@
       case 'igra':send('bid',{action:'igra'});return;
       case 'hand':send('bid',{action:'hand',value:Number(value)});return;
       case 'igraDeclare':send('igraDeclare',{value:Number(value)});return;
+      case 'igraWeaker':send('igraDeclare',{value:'weaker'});return;
       case 'takeTalon':send('takeTalon');return;
       case 'discard':send('discard',{cards:selected});selected=[];return;
       case 'declare':send('declare',{value:Number(value)});return;
@@ -497,7 +532,8 @@
   root.addEventListener('change',ev=>{
     if(!ev.target.matches('[data-settings]')||!state||state.seat===null)return;
     const startBula=Number($('#start-bula')?.value),maxRefe=Number($('#max-refe')?.value);
-    socket.emit('settings',{startBula,maxRefe});
+    const pikNoKontra=$('#pik-no-kontra')?.value||'declarer';
+    socket.emit('settings',{startBula,maxRefe,pikNoKontra});
   });
   render();
 })();
