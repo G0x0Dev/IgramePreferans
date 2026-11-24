@@ -1,7 +1,7 @@
 /** Simple, deterministic computer opponents for solo practice.
  * Each bot chooses using its own hand and the public trick, never private opponents' cards.
  */
-import { RANKS,SUITS,CONTRACTS,auctionAction,takeTalon,discard,declare,follow,callPartner,doubleAction,legalCards,winningSeat,playCard,allowedDoubles } from './game.js';
+import { RANKS,SUITS,CONTRACTS,auctionAction,igraDeclare,takeTalon,discard,declare,follow,callPartner,doubleAction,legalCards,winningSeat,playCard,allowedDoubles } from './game.js';
 
 const rank=card=>RANKS.indexOf(card.slice(1));
 const suit=card=>card[0];
@@ -34,17 +34,39 @@ export function botMove(g){
   const hand=g.hands[seat];
   switch(g.phase){
     case 'auction':{
-      const auction=g.auction;
-      if(auction.hand){auctionAction(g,seat,'pass');break;}
-      const power=strength(hand);
+      const a=g.auction;
+      const power=strength(hand),opening=a.history.length<3;
+      // Bot tactics remain intentionally basic, but all Igra paths obey the
+      // same declaration protocol and legal bids as a human.
+      if(a.handMode==='betl'){
+        if(opening && power>=32)auctionAction(g,seat,'hand',7);
+        else auctionAction(g,seat,'pass');
+        break;
+      }
+      if(a.handMode==='suit'){
+        if(opening && power>=18)auctionAction(g,seat,'igra');
+        else if(opening && power>=32)auctionAction(g,seat,'hand',7);
+        else auctionAction(g,seat,'pass');
+        break;
+      }
       const ceiling=power>=23?5:power>=17?4:power>=12?3:power>=8?2:1;
-      if(auction.highSeat===null){
+      if(opening && power>=24 && maxSuit(hand)>=4){
+        auctionAction(g,seat,'igra');
+      }else if(a.highSeat===null){
         auctionAction(g,seat,power>=8?'bid':'pass',power>=8?2:undefined);
-      }else if(auction.highSeat!==seat && auction.priority===seat && auction.bid<=ceiling){
+      }else if(a.highSeat!==seat && a.priority===seat && a.bid<=ceiling){
         auctionAction(g,seat,'mogu');
-      }else if(auction.bid<ceiling){
-        auctionAction(g,seat,'bid',auction.bid+1);
+      }else if(a.bid<ceiling){
+        auctionAction(g,seat,'bid',a.bid+1);
       }else auctionAction(g,seat,'pass');
+      break;
+    }
+    case 'igraReveal':{
+      const best=SUITS.map((s,i)=>{
+        const cards=hand.filter(c=>suit(c)===s);
+        return {value:i+2,power:cards.length*2+highCardPoints(cards)};
+      }).sort((a,b)=>b.power-a.power||b.value-a.value)[0];
+      igraDeclare(g,seat,best.value);
       break;
     }
     case 'talon':takeTalon(g,seat);break;
