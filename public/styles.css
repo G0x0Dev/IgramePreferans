@@ -198,3 +198,104 @@
 .settlement-notice strong{color:#ffe4aa;font-size:13px}
 .settlement-notice p{font-size:12px;line-height:1.5;color:#dfd5c5}
 .settlement-notice .action-row{margin-top:11px}
+
+/* Compact game controls — actions first, no multi-paragraph instructions. */
+.bid-status{font-size:12px;font-weight:700;color:#dfc58e;margin:0 0 8px}
+.pass-row{margin-top:12px}
+.button.pass-action{
+  min-height:48px;min-width:154px;background:#d57d37;border:2px solid #f9b770;
+  color:#1b252c;font-size:15px;font-weight:900;letter-spacing:.025em;
+  box-shadow:0 3px 0 #84421e,0 8px 20px #0005;
+}
+.button.pass-action:hover:not(:disabled){background:#f2a459;border-color:#ffca89}
+.button.pass-action:focus-visible,.button.igra-betl:focus-visible,
+.button.igra-sans:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.button.igra-betl{
+  min-height:45px;background:#7143a9;border:2px solid #ab84e9;
+  color:#fff5ff;box-shadow:0 4px 13px #170d3670;
+}
+.button.igra-betl:hover:not(:disabled){background:#8d56c4}
+.button.igra-sans{
+  min-height:45px;background:#086e83;border:2px solid #52b6cd;
+  color:#effbff;box-shadow:0 4px 13px #032d3970;
+}
+.button.igra-sans:hover:not(:disabled){background:#0d879b}
+.button.igra-betl,.button.igra-sans{font-weight:850}
+.hand-card-slot{display:contents}
+
+/* Phone & narrow tablet: fan the cards instead of hiding them behind a horizontal scroller.
+   The slots shrink to fit and each real card remains full size, leaving the rank
+   and suit in the visible left strip of every overlapped card. */
+@media(max-width:600px){
+  html,body,#root{max-width:100%;overflow-x:clip}
+  .app{padding-left:7px;padding-right:7px}
+  .layout,.main-col,.panel{min-width:0}
+  .topbar{gap:6px;flex-wrap:wrap;padding:7px 3px;min-height:58px}
+  .top-actions{gap:5px}
+  .top-actions .button{min-height:38px}
+  .stage-header{padding:12px 12px 9px;gap:7px}
+  .stage-header h2{font-size:18px}
+  .stage-header p{font-size:11px}
+  .phase-tag{max-width:42%;overflow:hidden;text-overflow:ellipsis}
+  .felt{min-height:265px;border-width:6px}
+  .felt::before{inset:10px}
+  .felt-emblem{font-size:20px}
+  .seat{min-width:78px;gap:3px}
+  .seat.top{top:10px}
+  .seat.left{left:2px;top:51%}
+  .seat.right{right:2px;top:51%}
+  .seat.me{bottom:9px}
+  .seat .person{font-size:10px;max-width:96px}
+  .seat .info{font-size:9px;max-width:96px}
+  .seat .avatar{width:29px;height:29px;font-size:14px}
+  .center-play{width:148px;height:118px;top:50%}
+  .table-wrap{padding:0 6px}
+  .table-note{margin:8px 6px 5px}
+  .my-hand-area{padding:13px 9px 13px;overflow:visible}
+  .hand-head{margin-bottom:8px}
+  .hand-head strong{font-size:11px;letter-spacing:.08em}
+  .hand{width:100%;min-height:110px;padding:11px 0 2px;display:flex;
+    flex-wrap:nowrap;gap:0;justify-content:center;align-items:flex-start;overflow:visible}
+  .hand-card-slot{display:block;position:relative;flex:0 1 60px;
+    min-width:0;height:94px;z-index:var(--card-index)}
+  .hand-card-slot:last-child{flex-shrink:0}
+  .hand-card-slot.is-selected,.hand-card-slot:focus-within{z-index:100}
+  .hand-card-slot .playing-card{position:absolute;top:0;left:0;
+    width:60px;height:94px;max-width:none;touch-action:manipulation}
+  .hand-card-slot .playing-card .card-corner{margin-left:5px}
+  .hand-card-slot .playing-card .card-corner.mirrored{margin-right:5px}
+  .hand-card-slot .playing-card .card-corner b{font-size:16px}
+  .hand-card-slot .playing-card .card-corner small{font-size:12px}
+  .hand-card-slot .playing-card.selected{transform:translateY(-12px)}
+  .hand-card-slot:focus-within .playing-card{outline:2px solid #e8c07a}
+  .actions{padding:13px 12px 18px;min-height:75px}
+  .actions-title{font-size:14px;margin-bottom:9px}
+  .action-row{gap:8px}
+  .action-row .button,.button-group .button{min-height:44px;white-space:normal}
+  .auction-bid-line{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;margin:0;padding:2px 0 6px;overflow:visible}
+  .auction-bid-line .button{width:100%;flex:auto;min-width:0;min-height:48px;
+    padding:10px 7px;white-space:normal;line-height:1.25}
+  .pass-row .button.pass-action{width:100%}
+  .button.pass-action{width:100%;min-height:50px}
+  .result-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .last-trick{padding:4px 2px;flex-wrap:wrap}
+  .lobby-settings{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .lobby-settings select{min-width:0}
+  .standings-table,.score-table{font-size:11px}
+}
+@media(max-width:365px){
+  .brand small{display:none}
+  .brand h1{font-size:17px}
+  .felt{min-height:248px}
+  .center-play{width:132px;height:112px}
+  .played.pos-left{left:16%}
+  .played.pos-right{left:84%}
+  .my-hand-area{padding-left:6px;padding-right:6px}
+  .hand-card-slot{flex-basis:58px}
+  .hand-card-slot .playing-card{width:58px}
+  .auction-bid-line .button{font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){
+  .hand .playing-card,.button{transition:none}
+}
