@@ -594,9 +594,10 @@ test('a weaker Igra declaration is not accepted before a stronger suit is known'
   assert.equal(g.phase,'igraReveal');
   assert.throws(()=>igraDeclare(g,1,'weaker'),/only after an earlier Igra claimant/i);
   igraDeclare(g,1,2);
-  assert.throws(()=>igraDeclare(g,2,'weaker'),/at least Karo/i);
-  igraDeclare(g,2,3);
-  assert.equal(g.contract.declarer,2);
+  assert.throws(()=>igraDeclare(g,2,2),/Only the first Igra claimant/i);
+  igraDeclare(g,2,'weaker');
+  assert.equal(g.contract.declarer,1);
+  assert.equal(g.contract.value,2);
 });
 test('Betl with Kontra awards the caller both defenders supa shares',()=>{
   for(const hand of [false,true]){
