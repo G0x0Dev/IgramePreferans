@@ -173,7 +173,7 @@
   function matchHistory() {
     if(state.mode==='solo')return `<section class="panel panel-pad match-history">
       <span class="eyebrow">Training only</span><h3 class="side-title">Practice game</h3>
-      <p class="muted-note">Your match score is shown above. Solo results do not affect your five-friend leaderboard or saved match history.</p>
+
       ${button('Restart practice','restartSolo',{variant:'small subtle'})}
     </section>`;
     const rows=state.leaderboard||[],games=state.history||[];
@@ -186,8 +186,8 @@
       <div class="action-row">${button('Download results backup','exportHistory',{variant:'small'})}${state.seat===null?'':button('Restore backup','importHistory',{variant:'small subtle'})}</div>
       <h4 class="history-title">Finished games (${games.length})</h4>
       ${games.length?`<div class="history-list">${games.slice(0,12).map((m,i)=>`<div class="history-match"><strong>Game ${games.length-i} · ${esc(new Date(m.at).toLocaleDateString())}</strong><small>${esc(m.players.map(p=>p.name+': '+p.score).join(' · '))}</small></div>`).join('')}</div>`:
-      '<p class="muted-note">Completed games will appear here and count toward the standings.</p>'}
-      ${games.length>12?'<p class="muted-note">Download the backup to see all saved games.</p>':''}
+      '<p class="muted-note">No finished games</p>'}
+
       
     </section>`;
   }
@@ -200,7 +200,7 @@
       ${myTurn&&!responded?`<div class="action-row">${button('Approve undo','approveUndo',{variant:'primary'})}${button('Reject undo','rejectUndo',{variant:'subtle'})}</div>`:
         responded?'<p>Approved — waiting for the other player.</p>':'<p>Waiting for both other players to decide.</p>'}</div>`;
     }
-    return state.canUndo ? `<div class="undo-trigger">${button('Undo my last card · ask both players','requestUndo',{variant:'small subtle'})}<span class="muted-note">Available briefly after your last play. Both opponents must approve.</span></div>`:'';
+    return state.canUndo ? `<div class="undo-trigger">${button('Undo my last card · ask both players','requestUndo',{variant:'small subtle'})}</div>`:'';
   }
   function lobby() {
     if(state.mode==='solo')return `<div class="app">${header()}<main class="lobby">
@@ -401,9 +401,7 @@
       <table class="supa-ledger"><thead><tr><th>From \ Against</th>${g.players.map(p=>`<th>${esc((p?.name||'?').slice(0,8))}</th>`).join('')}</tr></thead><tbody>
       ${g.scores.supe.map((row,i)=>`<tr><td>${esc(nameOf(i).slice(0,11))}</td>${row.map((n,j)=>`<td>${i===j?'—':n}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
       <div class="panel panel-pad"><span class="eyebrow">Table history</span><h3 class="side-title">Recent actions</h3><ul class="log">${[...g.log].reverse().map(s=>`<li>${esc(s)}</li>`).join('')||'<li>Waiting for the first deal.</li>'}</ul></div>
-      <div class="panel panel-pad rules-link"><span class="eyebrow">Playing rules</span><h3 class="side-title">Need a refresher?</h3>
-        This game follows the <a href="https://www.preferansklub.com/pravila1.htm" target="_blank" rel="noopener noreferrer">Preferans Klub rules</a>, including Mogu, Betl, Sans, Kontra, and the bula/supa scorecard. Play the five-friend table online, or use solo practice against two computer opponents.
-      </div>${matchHistory()}</aside>`;
+      ${matchHistory()}</aside>`;
   }
   function gameScreen() {
     const subtitle=state.seat===null?'Watching · waiting to play':state.turn===null?'Waiting for the next step':`${nameOf(state.turn)}${state.turn===state.seat?' (you)':''} to act`;
