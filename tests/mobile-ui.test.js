@@ -41,3 +41,22 @@ test('Dalje, Igra Betl and Igra Sans have visible distinct action styles',()=>{
   }
   assert.match(css,/\.auction-bid-line\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 });
+
+test('touchscreen playable cards do not cast overlapping or sticky hover shadows',()=>{
+  const hoverRuleStart=css.indexOf('/* Hover lift is for mouse / trackpad only.');
+  assert.ok(hoverRuleStart>=0,'hover-only card lift documented');
+  const beforeHoverFix=css.slice(0,hoverRuleStart);
+  assert.doesNotMatch(beforeHoverFix,/\.hand \.playing-card:hover:not\(\.disabled\)\{/,
+    'no unconditional hover rule should lift a card on mobile touch');
+  const fixes=css.slice(hoverRuleStart);
+  assert.match(fixes,/@media \(hover:hover\) and \(pointer:fine\)\{/,
+    'hover lift is restricted to accurate hover pointers');
+  assert.match(fixes,/\.hand \.hand-card-slot \.playing-card,\s*\.hand \.hand-card-slot \.playing-card:hover:not\(\.disabled\)\s*\{\s*box-shadow:none;/,
+    'overlapping mobile cards do not cast stacked drop shadows');
+  assert.match(fixes,/\.hand \.hand-card-slot \.playing-card\[role="button"\]:not\(\.selected\)\{/,
+    'legal clickable cards use an outline');
+  assert.match(fixes,/\.hand \.hand-card-slot \.playing-card\.selected,\s*\.hand \.hand-card-slot \.playing-card\.selected:hover:not\(\.disabled\)\{/,
+    'selected cards remain raised and visible without a hover shadow');
+  assert.match(fixes,/\.playing-card\[role="button"\]:focus-visible\{/,
+    'keyboard focus still has a visible accessible outline');
+});
