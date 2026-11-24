@@ -226,8 +226,8 @@ export function igraDeclare(g,seat,value){
   assert(seat===a.igraPlayers[a.igraDeclarations.length],'Only the next Igra claimant can declare.');
   const earlier=a.igraDeclarations.filter(d=>Number.isInteger(d.value));
   if(value==='weaker'){
-    assert(earlier.length>0 && Math.max(...earlier.map(d=>d.value))>2,
-      'You can say My game is weaker only after an earlier Igra claimant declared at least Karo.');
+    assert(earlier.length>0,
+      'You can say My game is weaker only after an earlier Igra claimant revealed a suit.');
     a.igraDeclarations.push({seat,value:null,weaker:true});
     log(g,publicName(g,seat)+': My game is weaker (Moja je manja).');
   }else{
