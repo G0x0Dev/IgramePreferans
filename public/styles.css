@@ -317,6 +317,7 @@
   .hand .hand-card-slot .playing-card:hover:not(.disabled){
     box-shadow:none;
   }
+  .hand .hand-card-slot:focus-within .playing-card{outline:none}
   .hand .hand-card-slot .playing-card[role="button"]:not(.selected){
     outline:2px solid #d9bd80;
     outline-offset:-2px;
@@ -328,7 +329,6 @@
     outline:2px solid #f0ce85;
     outline-offset:0;
   }
-  .hand .hand-card-slot:focus-within .playing-card{outline:none}
   .hand .hand-card-slot .playing-card[role="button"]:focus-visible{
     outline:3px solid #f0ce85;
     outline-offset:2px;
