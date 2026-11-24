@@ -101,90 +101,139 @@ export function deal(g, deckOverride = null) {
   g.active = []; g.summary = null;
   g.firstBidder = next(g.dealer);
   g.turn = g.firstBidder;
-  g.auction = { bid: 1, highSeat: null, hand: false, handValue: null,
-    passed: [false,false,false], priority: g.firstBidder, history: [] };
+  g.auction = { bid: 1, highSeat: null, hand: false, handValue: null, handMode: null,
+    igraPlayers: [], igraDeclarations: [], passed: [false,false,false], priority: g.firstBidder, history: [] };
   g.phase = 'auction';
   log(g, `Round ${g.round}: ${publicName(g,g.dealer)} dealt. Bidding begins with ${publicName(g,g.turn)}.`);
   return g;
 }
-function nextAuctionTurn(g, seat) {
-  const eligible = [0,1,2].filter(i => !g.auction.passed[i]);
-  if (!eligible.length) {
-    for (let i = 0; i < 3; i++) addRefe(g,i);
-    g.summary = { kind: 'pass', title: 'All players passed', details: 'Refe recorded where permitted. No tricks played.',
-      scoreChanges: [0,0,0], supaChanges: [0,0,0] };
-    g.phase = 'summary'; g.turn = null;
-    log(g,'All players passed; redeal.');
+function beginIgraDeclarations(g) {
+  const a=g.auction;
+  assert(a.handMode==='suit' && a.igraPlayers.length>0,'Nobody declared Igra.');
+  g.phase='igraReveal';
+  g.turn=a.igraPlayers[0];
+  log(g,'Suit Igra bidding: each Igra claimant now declares Pik, Karo, Herc or Tref.');
+}
+function nextAuctionTurn(g,seat) {
+  const a=g.auction;
+  // Igra-Sans cannot be overbid; Betl may be overbid only by Igra-Sans.
+  if(a.handMode==='sans'){endAuction(g);return;}
+  // Every player gets one opening opportunity to announce Igra.
+  if(a.hand && a.history.length>=3){
+    if(a.handMode==='suit')beginIgraDeclarations(g);
+    else endAuction(g);
     return;
   }
-  if (eligible.length === 1 && g.auction.highSeat === eligible[0]) {
-    endAuction(g); return;
+  const eligible=[0,1,2].filter(i=>!a.passed[i]);
+  if(!eligible.length){
+    if(a.hand){
+      if(a.handMode==='suit')beginIgraDeclarations(g);
+      else endAuction(g);
+    }else{
+      for(let i=0;i<3;i++)addRefe(g,i);
+      g.summary={kind:'pass',title:'All players passed',details:'Refe recorded where permitted. No tricks played.',
+        scoreChanges:[0,0,0],supaChanges:[0,0,0]};
+      g.phase='summary';g.turn=null;
+      log(g,'All players passed; redeal.');
+    }
+    return;
   }
-  // If just one bidder remains and has no bid, allow them to bid/pass.
-  g.turn = rotationFrom(next(seat), eligible);
+  if(eligible.length===1 && a.highSeat===eligible[0]){
+    if(a.handMode==='suit')beginIgraDeclarations(g);
+    else endAuction(g);
+    return;
+  }
+  g.turn=rotationFrom(next(seat),eligible);
 }
 function endAuction(g) {
-  const a = g.auction;
-  assert(a.highSeat !== null, 'No winning bidder.');
-  const won = a.highSeat;
-  g.contract = { declarer: won, value: a.hand ? a.handValue : null, hand: a.hand,
-    minimum: a.bid, trump: a.hand && a.handValue <= 5 ? CONTRACTS[a.handValue-2].suit : null };
-  log(g, `${publicName(g,won)} won the bidding${a.hand ? ` with ${contractName(a.handValue,true)}` : ` at ${a.bid}`}.`);
-  if (a.hand) { g.phase='following'; g.turn=null; beginFollowing(g); }
-  else { g.phase='talon'; g.turn=won; }
-}
-// The three opening bidding turns offer Igra contracts alongside the ordinary
-// next bid. After each player has had an opening turn, the auction only offers
-// the next ordinary bid, eligible Mogu, or Pass.
-export function availableAuctionBids(g,seat) {
-  if(g.phase!=='auction' || g.turn!==seat || g.auction.passed[seat])
-    return {ordinary:null,hand:[]};
   const a=g.auction;
+  assert(a.highSeat!==null,'No winning bidder.');
+  assert(!a.hand || Number.isInteger(a.handValue),'Suit Igra declarations must be resolved first.');
+  const won=a.highSeat;
+  g.contract={declarer:won,value:a.hand?a.handValue:null,hand:a.hand,
+    minimum:a.bid,trump:a.hand && a.handValue<=5 ? CONTRACTS[a.handValue-2].suit:null};
+  log(g,publicName(g,won)+' won the bidding'+(a.hand ? ' with '+contractName(a.handValue,true) : ' at '+a.bid)+'.');
+  if(a.hand){g.phase='following';g.turn=null;beginFollowing(g);}
+  else{g.phase='talon';g.turn=won;}
+}
+// Next ordinary bid and the three Igra actions available on opening turns.
+export function availableAuctionBids(g,seat){
+  const none={ordinary:null,igra:false,betl:false,sans:false};
+  if(g.phase!=='auction'||g.turn!==seat||g.auction.passed[seat])return none;
+  const a=g.auction,opening=a.history.length<3;
   return {
-    ordinary: !a.hand && a.bid<7 ? a.bid+1 : null,
-    hand: a.history.length<3 ? CONTRACTS.filter(c=>!a.hand || c.value>a.handValue).map(c=>c.value):[]
+    ordinary:!a.hand&&a.bid<7 ? a.bid+1 : null,
+    igra:opening&&(!a.hand || a.handMode==='suit'),
+    betl:opening&&(!a.hand || a.handMode==='suit'),
+    sans:opening&&a.handMode!=='sans'
   };
 }
-export function auctionAction(g, seat, action, value = null) {
+export function auctionAction(g,seat,action,value=null){
   assertTurn(g,seat,'auction');
-  const a = g.auction;
-  assert(!a.passed[seat], 'You have already passed.');
-  const player = publicName(g,seat);
-  switch (action) {
+  const a=g.auction;
+  assert(!a.passed[seat],'You have already passed.');
+  const player=publicName(g,seat);
+  switch(action){
     case 'pass':
-      a.passed[seat] = true;
-      if (a.priority === seat) {
-        const eligible = [0,1,2].filter(i => !a.passed[i]);
-        a.priority = rotationFrom(next(seat),eligible);
+      a.passed[seat]=true;
+      if(a.priority===seat){
+        const eligible=[0,1,2].filter(i=>!a.passed[i]);
+        a.priority=rotationFrom(next(seat),eligible);
       }
-      log(g,`${player}: Dalje (pass).`); break;
+      log(g,player+': Dalje (pass).');break;
     case 'bid':
-      assert(!a.hand, 'Only a higher hand game can beat a hand declaration.');
-      assert(isInt(value) && value >= 2 && value <= 7, 'Bid must be between 2 and 7.');
-      assert(value > a.bid, 'Bid must be higher than the current bid.');
-      assert(a.highSeat !== null || value === 2, 'The first ordinary bid must be Pik (2), unless you declare Igra.');
-      // Ordinary bidding progresses through each contract in order. No skipping.
-      // A direct Igra hand declaration remains an independent exception.
-      assert(value === a.bid + 1,
-        `The next ordinary bid must be ${contractName(a.bid+1)} (${a.bid+1}); bidding cannot skip a contract.`);
-      a.bid = value; a.highSeat = seat;
-      log(g,`${player}: ${value} (${contractName(value)}).`); break;
+      assert(!a.hand,'Only Igra Betl or Igra Sans can overbid a declared Igra.');
+      assert(isInt(value)&&value>=2&&value<=7,'Bid must be between 2 and 7.');
+      assert(value>a.bid,'Bid must be higher than the current bid.');
+      assert(a.highSeat!==null||value===2,'The first ordinary bid must be Pik (2), unless you declare Igra.');
+      assert(value===a.bid+1,
+        'The next ordinary bid must be '+contractName(a.bid+1)+' ('+(a.bid+1)+'); bidding cannot skip a contract.');
+      a.bid=value;a.highSeat=seat;
+      log(g,player+': '+value+' ('+contractName(value)+').');break;
     case 'mogu':
-      assert(!a.hand && a.highSeat !== null && a.highSeat !== seat, 'Mogu is unavailable.');
-      assert(seat === a.priority, 'Only the player with priority can say Mogu.');
-      a.highSeat = seat;
-      log(g,`${player}: Mogu ${a.bid}.`); break;
+      assert(!a.hand&&a.highSeat!==null&&a.highSeat!==seat,'Mogu is unavailable.');
+      assert(seat===a.priority,'Only the player with priority can say Mogu.');
+      a.highSeat=seat;
+      log(g,player+': Mogu '+a.bid+'.');break;
+    case 'igra':
+      assert(a.history.length<3,'Igra may only be declared in the first bidding round.');
+      assert(!a.hand||a.handMode==='suit','Only Igra Sans can overbid Igra Betl or Igra Sans.');
+      assert(!a.igraPlayers.includes(seat),'You have already declared Igra.');
+      if(!a.hand){
+        a.hand=true;a.handMode='suit';a.handValue=null;
+        a.highSeat=seat;a.bid=2;
+      }
+      a.igraPlayers.push(seat);
+      log(g,player+': Igra (suit declared after opening bids).');break;
     case 'hand':
-      assert(a.history.length<3, 'Igra may only be declared in the first bidding round.');
-      assert(isInt(value) && value >= 2 && value <= 7, 'Hand game must be Pik through Sans.');
-      if (a.hand) assert(value > a.handValue, 'You must declare a higher hand game.');
-      // A hand game wins against ordinary bidding and other lower hand games.
-      a.hand = true; a.handValue = value; a.highSeat = seat; a.bid = value;
-      log(g,`${player}: ${contractName(value,true)} (without talon).`); break;
-    default: bad('Unknown bidding action.');
+      assert(a.history.length<3,'Igra may only be declared in the first bidding round.');
+      assert(value===6||value===7,'Use Igra for suit games; only Igra Betl or Igra Sans is declared directly.');
+      assert(!a.hand || a.handMode==='suit' || value>a.handValue,
+        'Only a stronger direct Igra contract may overbid this Igra.');
+      a.hand=true;a.handMode=value===6?'betl':'sans';a.handValue=value;
+      a.highSeat=seat;a.bid=value;
+      log(g,player+': '+contractName(value,true)+' (without talon).');break;
+    default:bad('Unknown bidding action.');
   }
-  a.history.push({ seat, action, value });
+  a.history.push({seat,action,value});
   nextAuctionTurn(g,seat);
+}
+export function igraDeclare(g,seat,value){
+  assertTurn(g,seat,'igraReveal');
+  const a=g.auction;
+  assert(a.handMode==='suit','No suit Igra declarations pending.');
+  assert(seat===a.igraPlayers[a.igraDeclarations.length],'Only the next Igra claimant can declare.');
+  assert(isInt(value)&&value>=2&&value<=5,'Suit Igra must be Pik, Karo, Herc or Tref (2–5).');
+  a.igraDeclarations.push({seat,value});
+  log(g,publicName(g,seat)+': My Igra is '+contractName(value)+'.');
+  if(a.igraDeclarations.length<a.igraPlayers.length){
+    g.turn=a.igraPlayers[a.igraDeclarations.length];
+    return;
+  }
+  // Highest declared suit wins; first claimant wins an equal suit.
+  const highest=a.igraDeclarations.reduce((winner,current)=>current.value>winner.value?current:winner);
+  a.highSeat=highest.seat;a.handValue=highest.value;a.bid=highest.value;
+  endAuction(g);
 }
 export function takeTalon(g,seat) {
   assertTurn(g,seat,'talon');
@@ -444,7 +493,7 @@ export function viewFor(g,seat,roomCode) {
     hands:own?g.hands[seat]:[], handCounts:g.hands.map(h=>h.length),
     talonCount:g.talon.length, talon:g.phase==='talon' ? [...g.talon] : [],
     auction:g.auction ? {...g.auction} : null,
-    auctionOptions:own ? availableAuctionBids(g,seat) : {ordinary:null,hand:[]},
+    auctionOptions:own ? availableAuctionBids(g,seat) : {ordinary:null,igra:false,betl:false,sans:false},
     contract:g.contract?{...g.contract}:null,
     follows:g.follows,followMessages:g.followMessages,caller:g.caller,invited:g.invited,doubler:g.doubler,doubleStage:g.doubleStage,multiplier:g.multiplier,
     turn:g.turn,firstBidder:g.firstBidder,trick:g.trick,lastTrick:g.lastTrick,availableDoubles:own?allowedDoubles(g,seat):[],
