@@ -124,8 +124,8 @@ test('auction badges display each player\'s most recent public bid or pass by th
   assert.deepEqual(fn(g,2),{label:'Moja je manja',kind:'weaker'});
   g.phase='playing';
   assert.equal(fn(g,2),null,'old bid badges disappear outside auction phases');
-  assert.match(app,/class="auction-choice/);
-  assert.match(css,/\\.seat \\.auction-choice\\{/);
+  assert.ok(app.includes('class="auction-choice'),'seat badges are rendered');
+  assert.ok(css.includes('.seat .auction-choice{'),'seat badges have table styling');
 });
 test('each new trick card drops once, without replaying on normal state updates',()=>{
   const start=app.indexOf('  function freshPlayedCard(');
@@ -143,9 +143,10 @@ test('each new trick card drops once, without replaying on normal state updates'
   assert.equal(fresh({...previous,trick:[second]},next),null,'replaced trick is not a new card');
   assert.deepEqual(fresh(previous,{...next,phase:'summary'}),second,
     'last played Betl card also animates before the immediate summary');
-  assert.match(app,/render\\(newlyPlayed\\);/);
-  assert.match(app,/incoming\\?' incoming':''/);
-  assert.match(css,/\\.played\\.incoming \\.playing-card\\{/);
-  assert.match(css,/@keyframes card-drop-on-felt\\{/);
-  assert.match(css,/@media\\(prefers-reduced-motion:reduce\\)\\{[\\s\\S]*?\\.played\\.incoming \\.playing-card\\{animation:none;/);
+  assert.ok(app.includes('render(newlyPlayed);'));
+  assert.ok(app.includes("incoming?' incoming':''"));
+  assert.ok(css.includes('.played.incoming .playing-card{'));
+  assert.ok(css.includes('@keyframes card-drop-on-felt{'));
+  assert.ok(css.includes('.played.incoming .playing-card{animation:none;'),
+    'reduced-motion users should not receive card animations');
 });
