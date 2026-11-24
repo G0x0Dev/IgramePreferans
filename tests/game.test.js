@@ -624,7 +624,44 @@ test('Betl with Kontra awards the caller both defenders supa shares',()=>{
     assert.equal(g.scores.bula[dec],hand?128:124);
   }
 });
-test('early five-defender-trick stop waives individual defender bula fall',()=>{
+test('both defenders pass together with four tricks; captured-trick split only affects supa',()=>{
+  for(const [first,second] of [[3,1],[4,0],[2,2],[1,3],[0,4]]){
+    const g=game(),dec=winBid(g,4);twoDefenders(g,dec);
+    const [d1,d2]=[0,1,2].filter(i=>i!==dec);
+    g.tricks=[0,0,0];
+    g.tricks[dec]=6;g.tricks[d1]=first;g.tricks[d2]=second;
+    g.trickNumber=10;g.phase='trickReview';
+    g.lastTrick={winner:dec,cards:[],number:10};
+    advanceTrick(g);
+    assert.equal(g.phase,'summary');
+    assert.equal(g.scores.bula[dec],92,'declarer with six tricks passes at Herc (-8 bula)');
+    assert.equal(g.scores.bula[d1],100,'first defender passes on their combined four tricks');
+    assert.equal(g.scores.bula[d2],100,'second defender passes regardless of individual share');
+    assert.equal(g.scores.supe[d1][dec],first*8,'first defender receives only their captured-trick supa');
+    assert.equal(g.scores.supe[d2][dec],second*8,'second defender receives only their captured-trick supa');
+    assert.deepEqual(g.summary.scoreChanges,[0,-8,0],
+      'only the declarer changes bula (declarer sits at seat 1)');
+    assert.match(g.summary.details,/Both defenders passed together with 4 tricks/i);
+  }
+});
+test('when both defenders play and take only three combined tricks, both fall regardless of split',()=>{
+  for(const [first,second] of [[3,0],[2,1],[0,3]]){
+    const g=game(),dec=winBid(g,4);twoDefenders(g,dec);
+    const [d1,d2]=[0,1,2].filter(i=>i!==dec);
+    g.tricks=[0,0,0];
+    g.tricks[dec]=7;g.tricks[d1]=first;g.tricks[d2]=second;
+    g.trickNumber=10;g.phase='trickReview';
+    g.lastTrick={winner:dec,cards:[],number:10};
+    advanceTrick(g);
+    assert.equal(g.scores.bula[dec],92);
+    assert.equal(g.scores.bula[d1],108,'both defenders miss their shared four-trick goal');
+    assert.equal(g.scores.bula[d2],108);
+    assert.equal(g.scores.supe[d1][dec],first*8);
+    assert.equal(g.scores.supe[d2][dec],second*8);
+    assert.match(g.summary.details,/Both defenders fell together with 3 tricks/i);
+  }
+});
+test('early finish after defenders take five combined tricks never penalizes either individual',()=>{
   const g=game(),dec=winBid(g,5);twoDefenders(g,dec);
   const defenders=[0,1,2].filter(i=>i!==dec);
   g.tricks=[0,0,0];g.tricks[defenders[0]]=5;
@@ -633,19 +670,30 @@ test('early five-defender-trick stop waives individual defender bula fall',()=>{
   advanceTrick(g);
   assert.equal(g.phase,'summary');
   assert.equal(g.scores.bula[dec],110);
-  assert.equal(g.scores.bula[defenders[1]],100,'zero-trick defender is not penalized in a shortened hand');
+  assert.equal(g.scores.bula[defenders[0]],100);
+  assert.equal(g.scores.bula[defenders[1]],100,
+    'defender with zero tricks passes because the team captured five');
   assert.equal(g.scores.supe[defenders[0]][dec],50);
   assert.equal(g.scores.supe[defenders[1]][dec],0);
-  assert.match(g.summary.details,/penalties waived/i);
-  const full=game(),fullDec=winBid(full,5);
-  twoDefenders(full,fullDec);
-  const fullDefs=[0,1,2].filter(i=>i!==fullDec);
-  full.tricks=[0,0,0];full.tricks[fullDec]=7;full.tricks[fullDefs[0]]=3;
-  full.trickNumber=10;full.phase='trickReview';
-  full.lastTrick={winner:fullDec,number:10,cards:[]};
-  advanceTrick(full);
-  assert.equal(full.scores.bula[fullDefs[1]],110,
-    'ordinary insufficient-trick penalty still applies after a full ten tricks');
+  assert.match(g.summary.details,/Both defenders passed together with 5 tricks/i);
+});
+test('a lone participating defender retains the separate two-trick minimum',()=>{
+  for(const [own,passes] of [[2,true],[1,false]]){
+    const g=game(),dec=winBid(g,4);
+    const lone=g.turn;
+    follow(g,lone,true);follow(g,g.turn,false);
+    assert.equal(g.phase,'calling');
+    callPartner(g,lone,false);
+    doubleAction(g,g.turn,'ok');doubleAction(g,g.turn,'ok');
+    const absent=[0,1,2].find(i=>i!==dec&&i!==lone);
+    g.tricks=[0,0,0];g.tricks[dec]=10-own;g.tricks[lone]=own;
+    g.trickNumber=10;g.phase='trickReview';
+    g.lastTrick={winner:dec,cards:[],number:10};
+    advanceTrick(g);
+    assert.equal(g.scores.bula[lone],passes?100:108);
+    assert.equal(g.scores.bula[absent],100);
+    assert.equal(g.scores.supe[lone][dec],own*8);
+  }
 });
 test('Pik without Kontra defaults to declarer-refe but can award all eligible players a refe',()=>{
   const g=game({pikNoKontra:'all',maxRefe:2});
