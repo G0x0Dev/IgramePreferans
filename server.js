@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { randomBytes, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
-import { createGame,deal,auctionAction,igraDeclare,takeTalon,discard,declare,follow,callPartner,doubleAction,playCard,advanceTrick,viewFor,finalScores } from './game.js';
+import { createGame,deal,auctionAction,igraDeclare,takeTalon,discard,declare,follow,callPartner,doubleAction,playCard,advanceTrick,viewFor,finalScores,settleMatch } from './game.js';
 import { loadHistory,saveHistory,mergeHistory,leaderboard } from './history.js';
 import { botMove } from './bot.js';
 
@@ -16,7 +16,7 @@ const mime={'index.html':'text/html; charset=utf-8','app.js':'application/javasc
 const clients=new Map();
 const ROOM_CODE='FRIENDS';
 const FRIEND_LIMIT=5;
-const sharedRoom={code:ROOM_CODE,game:createGame(),members:[],nextMemberId:1,updated:Date.now(),timer:null,archiveTimer:null,history:loadHistory(),undoCandidate:null,undoRequest:null,matchId:null,solo:false};
+const sharedRoom={code:ROOM_CODE,game:createGame(),members:[],nextMemberId:1,updated:Date.now(),timer:null,archiveTimer:null,history:loadHistory(),undoCandidate:null,undoRequest:null,settlementRequest:null,matchId:null,solo:false};
 const soloRooms=new Map();
 const SOLO_LIMIT=30;
 const MAX_MESSAGE=128_000; // allows restoring a full bounded JSON score archive
@@ -70,7 +70,11 @@ function sendState(room){
     view.history=room.solo?[]:room.history;
     view.leaderboard=room.solo?[]:leaderboard(room.history);
     view.undoRequest=room.undoRequest ? {seat:room.undoRequest.seat,card:room.undoRequest.card,approvals:room.undoRequest.approvals} : null;
-    view.canUndo=!room.solo && !!room.undoCandidate && !room.undoRequest && room.undoCandidate.seat===member.seat && Date.now()-room.undoCandidate.at<=30000 && ['playing','trickReview','summary'].includes(room.game.phase);
+    view.settlementRequest=room.settlementRequest
+      ? {seat:room.settlementRequest.seat,approvals:[...room.settlementRequest.approvals]} : null;
+    view.canSettle=!room.solo && member.seat!==null && room.game.round>0 &&
+      room.game.phase==='summary' && !room.game.finished && !room.settlementRequest && !room.undoRequest;
+    view.canUndo=!room.solo && !!room.undoCandidate && !room.undoRequest && !room.settlementRequest && room.undoCandidate.seat===member.seat && Date.now()-room.undoCandidate.at<=30000 && ['playing','trickReview','summary'].includes(room.game.phase);
     for(const cid of member.connections)send(clients.get(cid),'state',view);
   }
 }
@@ -108,6 +112,7 @@ function guard(client,event,fn){
     const {room,seat}=session(client);
     if(seat===null)throw Error('You are waiting. Choose a seat before playing.');
     if(room.undoRequest)throw Error('An undo request is awaiting both opponents.');
+    if(room.settlementRequest)throw Error('The players are voting on otpisivanje; finish the vote first.');
     fn(room.game,seat,room);
     room.updated=Date.now();
     if(process.env.DEBUG_GAME)console.log(room.code,seat,event,room.game.phase);
@@ -178,7 +183,7 @@ function newSoloRoom(name){
   const game=createGame();
   game.players=[human,bot1,bot2];
   const room={code:'PRACTICE',game,members:[human,bot1,bot2],nextMemberId:4,updated:Date.now(),
-    timer:null,archiveTimer:null,botTimer:null,history:[],undoCandidate:null,undoRequest:null,matchId:null,solo:true};
+    timer:null,archiveTimer:null,botTimer:null,history:[],undoCandidate:null,undoRequest:null,settlementRequest:null,matchId:null,solo:true};
   soloRooms.set(token,room);
   return {room,member:human};
 }
@@ -218,6 +223,7 @@ function handleUndo(client,event,data,id){
     const candidate=room.undoCandidate;
     if(event==='requestUndo'){
       if(room.undoRequest)throw Error('An undo request is already pending.');
+      if(room.settlementRequest)throw Error('Wait for the otpisivanje vote to finish.');
       if(!candidate || candidate.seat!==seat)throw Error('You can only undo the card you played last.');
       if(Date.now()-candidate.at>UNDO_WINDOW_MS)throw Error('Undo time expired (30 seconds).');
       if(!['playing','trickReview','summary'].includes(room.game.phase))throw Error('The card can no longer be undone.');
@@ -256,6 +262,56 @@ function handleUndo(client,event,data,id){
       }
     }
     reply(client,id,{ok:true});
+    sendState(room);
+  }catch(e){reply(client,id,{ok:false,error:e.message});send(client,'actionError',e.message);}
+}
+function clearSettlementRequest(room){
+  if(room.settlementRequest?.timer)clearTimeout(room.settlementRequest.timer);
+  room.settlementRequest=null;
+}
+function handleSettlement(client,event,data,id){
+  try{
+    const {room,seat}=session(client);
+    if(room.solo)throw Error('Otpisivanje requires three human players in the friends room.');
+    if(seat===null)throw Error('Only seated players can approve match settlement.');
+    if(event==='requestSettlement'){
+      if(room.game.phase!=='summary'||room.game.finished||room.game.round<1)
+        throw Error('Settlement can only start between hands of an unfinished match.');
+      if(room.settlementRequest)throw Error('Otpisivanje is already awaiting votes.');
+      if(room.undoRequest)throw Error('Resolve the pending undo request first.');
+      if(!room.game.players.every(p=>p?.online))
+        throw Error('All three seated players must be online to agree on settlement.');
+      const request={seat,approvals:[false,false,false],started:Date.now(),timer:null};
+      request.approvals[seat]=true;
+      room.settlementRequest=request;
+      request.timer=setTimeout(()=>{
+        if(room.settlementRequest===request){
+          clearSettlementRequest(room);
+          sendState(room);
+        }
+      },30000);
+      request.timer.unref?.();
+    }else if(event==='voteSettlement'){
+      const request=room.settlementRequest;
+      if(!request)throw Error('There is no otpisivanje request.');
+      if(seat===request.seat)throw Error('Only the other two players can vote.');
+      if(typeof data.approve!=='boolean')throw Error('Choose approve or reject.');
+      if(request.approvals[seat])throw Error('You have already voted.');
+      if(!data.approve){
+        clearSettlementRequest(room);
+      }else{
+        request.approvals[seat]=true;
+        if(request.approvals.every(Boolean)){
+          // All three have now consented, and all cards from the last
+          // hand have already been scored. No late Undo can reverse this.
+          settleMatch(room.game);
+          clearSettlementRequest(room);
+          resetUndo(room);
+          recordFinished(room);
+        }
+      }
+    }else throw Error('Unknown settlement action.');
+    reply(client,id,{ok:true,finished:room.game.finished});
     sendState(room);
   }catch(e){reply(client,id,{ok:false,error:e.message});send(client,'actionError',e.message);}
 }
@@ -316,6 +372,9 @@ function handleMessage(client,message){
     return;
   }
   const room=client.room||sharedRoom;
+  if(event==='requestSettlement'||event==='voteSettlement'){
+    handleSettlement(client,event,data,id);return;
+  }
   if(event==='requestUndo'||event==='voteUndo'){
     handleUndo(client,event,data,id);return;
   }
@@ -343,6 +402,7 @@ function handleMessage(client,message){
       if(event==='newMatch'){
         if(room.game.phase!=='summary'||!room.game.finished)throw Error('The current match has not finished.');
         if(room.undoRequest)throw Error('Resolve undo voting before starting a new match.');
+        if(room.settlementRequest)throw Error('Resolve settlement voting before starting a new match.');
         if(room.game.finished)recordFinished(room);
         resetUndo(room);
         const settings=room.game.settings;
@@ -378,9 +438,11 @@ function handleMessage(client,message){
     case 'settings':action((g,seat)=>{
       if(g.phase!=='lobby')throw Error('Settings can only be changed before starting a match.');
       const b=Number(data.startBula),r=Number(data.maxRefe);
-      if(!Number.isInteger(b)||b<50||b>120||![2,3,4].includes(r))
-        throw Error('Choose bula from 50 to 120 and refe from 2 to 4.');
-      const settings=createGame({startBula:b,maxRefe:r}).settings;
+      const pikNoKontra=data.pikNoKontra===undefined?g.settings.pikNoKontra:data.pikNoKontra;
+      if(!Number.isInteger(b)||b<50||b>120||![2,3,4].includes(r)||
+          !['declarer','all'].includes(pikNoKontra))
+        throw Error('Choose bula 50–120, refe 2–4 and a valid Pik-without-Kontra rule.');
+      const settings=createGame({startBula:b,maxRefe:r,pikNoKontra}).settings;
       g.settings=settings;
       g.scores.bula=[settings.startBula,settings.startBula,settings.startBula];
     });break;

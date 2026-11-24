@@ -44,7 +44,11 @@ export function botMove(g){
         break;
       }
       if(a.handMode==='suit'){
-        if(opening && power>=18)auctionAction(g,seat,'igra');
+        // A later Igra claimant may not enter with a suit-Pik-only hand.
+        const bestSuit=SUITS.map((s,i)=>({value:i+2,power:hand.filter(c=>suit(c)===s).length*2+
+          highCardPoints(hand.filter(c=>suit(c)===s))}))
+          .sort((a,b)=>b.power-a.power||b.value-a.value)[0];
+        if(opening && power>=18 && bestSuit.value>=3)auctionAction(g,seat,'igra');
         else if(opening && power>=32)auctionAction(g,seat,'hand',7);
         else auctionAction(g,seat,'pass');
         break;
@@ -66,7 +70,13 @@ export function botMove(g){
         const cards=hand.filter(c=>suit(c)===s);
         return {value:i+2,power:cards.length*2+highCardPoints(cards)};
       }).sort((a,b)=>b.power-a.power||b.value-a.value)[0];
-      igraDeclare(g,seat,best.value);
+      const earlier=g.auction.igraDeclarations.filter(d=>Number.isInteger(d.value));
+      const top=earlier.length?Math.max(...earlier.map(d=>d.value)):0;
+      let declaration=best.value;
+      if(top>best.value)declaration='weaker';
+      else if(g.auction.igraPlayers[0]!==seat && best.value===2)
+        declaration=top>=2?'weaker':3;
+      igraDeclare(g,seat,declaration);
       break;
     }
     case 'talon':takeTalon(g,seat);break;

@@ -186,3 +186,15 @@
 /* Show which players entered the two-stage Igra auction. */
 .igra-claims{display:flex;flex-wrap:wrap;gap:8px;margin:7px 0 14px}
 .igra-claim{padding:8px 11px;background:#ffffff10;color:#eadab9;border:1px solid #dcc18d60;border-radius:8px;font-size:12px}
+
+/* Optional Pik house rule and unanimous settlement voting */
+.pik-rule{margin-top:14px;padding:12px 0 0;border-top:1px solid #ffffff20}
+.pik-rule label{display:block;margin-bottom:7px;font-size:11px;color:var(--goldSoft);text-transform:uppercase;letter-spacing:.07em}
+.pik-rule select{min-width:240px;max-width:100%}
+.pik-rule .muted-note{margin:8px 0 0;line-height:1.5}
+.settlement-offer{margin:15px 0 2px;padding:13px;border:1px solid #ead3a644;border-radius:9px;background:#ffffff09}
+.settlement-offer .muted-note{margin:0 0 10px}
+.settlement-notice{margin:14px 0;border:1px solid #daba7f;padding:14px;border-radius:10px;background:#5e4b3033}
+.settlement-notice strong{color:#ffe4aa;font-size:13px}
+.settlement-notice p{font-size:12px;line-height:1.5;color:#dfd5c5}
+.settlement-notice .action-row{margin-top:11px}

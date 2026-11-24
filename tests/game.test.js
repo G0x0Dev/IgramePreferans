@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   makeDeck,shuffle,sortHand,createGame,deal,auctionAction,igraDeclare,takeTalon,discard,declare,
   follow,callPartner,doubleAction,legalCards,winningSeat,playCard,advanceTrick,
-  finalScores,viewFor
+  finalScores,settleMatch,viewFor
 } from '../game.js';
 
 function game(settings={}) {
@@ -430,11 +430,11 @@ test('legal trick-taking stops at fifth defensive trick or after all ten',()=>{
 });
 
 test('bula range 50–120 and refe choices 2–4 with default values',()=>{
-  assert.deepEqual(createGame().settings,{startBula:100,maxRefe:2});
-  assert.deepEqual(createGame({startBula:50,maxRefe:4}).settings,{startBula:50,maxRefe:4});
-  assert.deepEqual(createGame({startBula:120,maxRefe:3}).settings,{startBula:120,maxRefe:3});
-  assert.deepEqual(createGame({startBula:49,maxRefe:5}).settings,{startBula:100,maxRefe:2});
-  assert.deepEqual(createGame({startBula:121,maxRefe:1}).settings,{startBula:100,maxRefe:2});
+  assert.deepEqual(createGame().settings,{startBula:100,maxRefe:2,pikNoKontra:'declarer'});
+  assert.deepEqual(createGame({startBula:50,maxRefe:4,pikNoKontra:'all'}).settings,{startBula:50,maxRefe:4,pikNoKontra:'all'});
+  assert.deepEqual(createGame({startBula:120,maxRefe:3}).settings,{startBula:120,maxRefe:3,pikNoKontra:'declarer'});
+  assert.deepEqual(createGame({startBula:49,maxRefe:5}).settings,{startBula:100,maxRefe:2,pikNoKontra:'declarer'});
+  assert.deepEqual(createGame({startBula:121,maxRefe:1,pikNoKontra:'invalid'}).settings,{startBula:100,maxRefe:2,pikNoKontra:'declarer'});
 });
 test('cards are grouped by suit and ranked 7 to Ace',()=>{
   const hand=['H10','D8','SA','C7','D7','H7','S7','CA','DK','HQ'];
@@ -566,4 +566,124 @@ test('plain Betl and Igra-Betl fail immediately on declarer first captured trick
     assert.throws(()=>playCard(g,1,'CA'),/action isn't available during summary/i);
     assert.throws(()=>advanceTrick(g),/No completed trick/);
   }
+});
+
+
+test('only the first Igra claimant may declare Pik; later players may say my game is weaker',()=>{
+  const g=game();
+  auctionAction(g,1,'igra');
+  auctionAction(g,2,'igra');
+  auctionAction(g,0,'igra');
+  assert.equal(g.phase,'igraReveal');
+  igraDeclare(g,1,3);
+  assert.throws(()=>igraDeclare(g,2,2),/Only the first Igra claimant may declare Igra Pik/i);
+  assert.equal(g.turn,2,'invalid declaration must not advance the auction');
+  igraDeclare(g,2,5);
+  igraDeclare(g,0,'weaker');
+  assert.equal(g.phase,'following');
+  assert.equal(g.contract.declarer,2);
+  assert.equal(g.contract.value,5);
+  assert.deepEqual(g.auction.igraDeclarations.map(d=>d.value),[3,5,null]);
+  assert.equal(g.auction.igraDeclarations[2].weaker,true);
+});
+test('a weaker Igra declaration is not accepted before a stronger suit is known',()=>{
+  const g=game();
+  auctionAction(g,1,'igra');
+  auctionAction(g,2,'igra');
+  auctionAction(g,0,'pass');
+  assert.equal(g.phase,'igraReveal');
+  assert.throws(()=>igraDeclare(g,1,'weaker'),/only after an earlier Igra claimant/i);
+  igraDeclare(g,1,2);
+  assert.throws(()=>igraDeclare(g,2,2),/Only the first Igra claimant/i);
+  igraDeclare(g,2,'weaker');
+  assert.equal(g.contract.declarer,1);
+  assert.equal(g.contract.value,2);
+});
+test('Betl with Kontra awards the caller both defenders supa shares',()=>{
+  for(const hand of [false,true]){
+    const g=game(),dec=hand?1:winBid(g,6);
+    if(hand){
+      auctionAction(g,1,'hand',6);
+      auctionAction(g,2,'pass');
+      auctionAction(g,0,'pass');
+    }
+    assert.equal(g.phase,'doubles');
+    const doubler=g.turn;
+    doubleAction(g,doubler,'kontra');
+    doubleAction(g,dec,'ok');
+    g.tricks=[0,0,0];g.tricks[dec]=1;
+    g.trickNumber=1;g.phase='trickReview';
+    g.lastTrick={winner:dec,number:1,cards:[]};
+    advanceTrick(g);
+    assert.equal(g.phase,'summary');
+    const expected=hand?280:240;
+    assert.equal(g.scores.supe[doubler][dec],expected,
+      'caller receives both 70/60 allocations multiplied by Kontra');
+    const passive=[0,1,2].find(i=>i!==dec&&i!==doubler);
+    assert.equal(g.scores.supe[passive][dec],0);
+    assert.equal(g.scores.bula[dec],hand?128:124);
+  }
+});
+test('early five-defender-trick stop waives individual defender bula fall',()=>{
+  const g=game(),dec=winBid(g,5);twoDefenders(g,dec);
+  const defenders=[0,1,2].filter(i=>i!==dec);
+  g.tricks=[0,0,0];g.tricks[defenders[0]]=5;
+  g.trickNumber=5;g.phase='trickReview';
+  g.lastTrick={winner:defenders[0],number:5,cards:[]};
+  advanceTrick(g);
+  assert.equal(g.phase,'summary');
+  assert.equal(g.scores.bula[dec],110);
+  assert.equal(g.scores.bula[defenders[1]],100,'zero-trick defender is not penalized in a shortened hand');
+  assert.equal(g.scores.supe[defenders[0]][dec],50);
+  assert.equal(g.scores.supe[defenders[1]][dec],0);
+  assert.match(g.summary.details,/penalties waived/i);
+  const full=game(),fullDec=winBid(full,5);
+  twoDefenders(full,fullDec);
+  const fullDefs=[0,1,2].filter(i=>i!==fullDec);
+  full.tricks=[0,0,0];full.tricks[fullDec]=7;full.tricks[fullDefs[0]]=3;
+  full.trickNumber=10;full.phase='trickReview';
+  full.lastTrick={winner:fullDec,number:10,cards:[]};
+  advanceTrick(full);
+  assert.equal(full.scores.bula[fullDefs[1]],110,
+    'ordinary insufficient-trick penalty still applies after a full ten tricks');
+});
+test('Pik without Kontra defaults to declarer-refe but can award all eligible players a refe',()=>{
+  const g=game({pikNoKontra:'all',maxRefe:2});
+  winBid(g,2);follow(g,g.turn,'dodjem');follow(g,g.turn,'dodjem');
+  doubleAction(g,g.turn,'ok');doubleAction(g,g.turn,'ok');
+  assert.equal(g.phase,'summary');
+  assert.deepEqual(g.scores.refe,[1,1,1]);
+  assert.deepEqual(g.scores.bula,[100,100,100]);
+  assert.match(g.summary.details,/received a refe/i);
+  const h=game({pikNoKontra:'all',maxRefe:2});
+  h.scores.refe=[2,2,1];
+  winBid(h,2);follow(h,h.turn,'dodjem');follow(h,h.turn,'dodjem');
+  doubleAction(h,h.turn,'ok');doubleAction(h,h.turn,'ok');
+  assert.deepEqual(h.scores.refe,[2,2,2],
+    'players already at their limit do not gain extra refe');
+  const z=game({pikNoKontra:'all',maxRefe:2});
+  z.scores.refe=[2,2,2];
+  winBid(z,2);follow(z,z.turn,'dodjem');follow(z,z.turn,'dodjem');
+  doubleAction(z,z.turn,'ok');doubleAction(z,z.turn,'ok');
+  assert.equal(z.phase,'summary');
+  assert.equal(z.scores.bula[1],92,'existing fallback is an automatic Pik pass');
+});
+test('otpisivanje reduces total bula to zero, favouring lowest existing bula',()=>{
+  const g=game();
+  g.phase='summary';g.scores.bula=[24,34,28];g.scores.refe=[1,0,2];
+  g.scores.supe[0][1]=37;
+  assert.deepEqual(settleMatch(g),[28,29,29]);
+  assert.deepEqual(g.scores.bula,[-4,5,-1]);
+  assert.equal(g.scores.bula.reduce((a,b)=>a+b),0);
+  assert.deepEqual(g.scores.refe,[1,0,2]);
+  assert.equal(g.scores.supe[0][1],37);
+  assert.equal(g.finished,true);
+  assert.equal(g.summary.kind,'settlement');
+  assert.throws(()=>settleMatch(g),/unfinished match/i);
+  const h=game();
+  h.phase='summary';h.scores.bula=[8,2,0];
+  assert.deepEqual(settleMatch(h),[4,3,3]);
+  assert.deepEqual(h.scores.bula,[4,-1,-3]);
+  const bad=game();
+  assert.throws(()=>settleMatch(bad),/only possible between rounds/i);
 });
