@@ -73,7 +73,7 @@ test('mobile game buttons dock at bottom within thumb reach, while desktop stays
   assert.match(app,/class="panel game-stage\$\{mobileDock\?' has-mobile-dock':''\}"/,
     'only the active player gets a mobile action dock');
   assert.match(app,/\['auction','igraReveal','talon','discard','contract','following','calling','doubles'\]\.includes\(state\.phase\)/);
-  assert.match(app,/\$\{table\(\)\}\$\{hand\(\)\}\$\{actionPanel\(\)\}/,
+  assert.match(app,/\$\{table\(playedCard\)\}\$\{hand\(\)\}\$\{actionPanel\(\)\}/,
     'original desktop table, hand, actions DOM ordering is preserved');
   assert.match(css,/@media\(max-width:600px\)\{[\s\S]*?\.game-stage\{display:flex;flex-direction:column\}/);
   const dockStyles=css.slice(css.indexOf('/* Thumb-first mobile controls:'));
