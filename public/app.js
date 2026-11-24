@@ -405,7 +405,11 @@
   }
   function gameScreen() {
     const subtitle=state.seat===null?'Watching · waiting to play':state.turn===null?'Waiting for the next step':`${nameOf(state.turn)}${state.turn===state.seat?' (you)':''} to act`;
-    return `<div class="app">${header()}<div class="layout"><main class="main-col"><section class="panel game-stage" data-phase="${esc(state.phase)}">
+    // Keep actions near the thumb on phones when it is this player's turn.
+    // During other turns, results and card play, keep the normal document flow.
+    const mobileDock=state.seat!==null && state.turn===state.seat &&
+      ['auction','igraReveal','talon','discard','contract','following','calling','doubles'].includes(state.phase);
+    return `<div class="app">${header()}<div class="layout"><main class="main-col"><section class="panel game-stage${mobileDock?' has-mobile-dock':''}" data-phase="${esc(state.phase)}">
       <div class="stage-header"><div><span class="eyebrow">Round ${state.round} · Dealer: ${esc(nameOf(state.dealer))}</span><h2>${phaseTitle[state.phase]}</h2><p>${esc(subtitle)}</p></div><span class="phase-tag">${state.contract?contractName(state.contract.value,state.contract.hand):'Bidding'}</span></div>
       ${table()}${hand()}${actionPanel()}</section>
       ${state.lastTrick?`<div class="last-trick"><small>Last trick · ${esc(nameOf(state.lastTrick.winner))} won:</small>${state.lastTrick.cards.map(p=>cardHtml(p.card)).join('')}</div>`:''}
