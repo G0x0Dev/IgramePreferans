@@ -45,7 +45,7 @@ On the welcome page, choose **Play solo vs 2 computers** instead of joining the 
 
 ## Mobile gameplay
 
-The game table uses a compact phone layout with **overlapping cards** so all 10–12 hand cards remain visible on small screens without horizontal card scrolling. Tap the exposed left edge (rank and suit) of a card to play or select it; a selected card rises above its neighbors. The bidding controls display in two columns on phones.
+The game header is inset below the phone's notch/status bar, and **bidding/response buttons appear above the hand and table on mobile** so they can be reached in the first screen without scrolling. Desktop retains the normal table-first layout. The game table uses a compact phone layout with **overlapping cards** so all 10–12 hand cards remain visible on small screens without horizontal card scrolling. Tap the exposed left edge (rank and suit) of a card to play or select it; a selected card rises above its neighbors. The bidding controls display in two columns on phones.
 
 The in-game rules tutorial, hand hints and long instructional paragraphs have been removed from the playing screen; actions, bid status, results, and necessary undo/otpisivanje consent messages remain visible. **Dalje / Pass** is a prominent orange action, **Igra Betl** is purple and **Igra Sans** is teal-blue. Desktop retains the conventional spaced card layout.
 
