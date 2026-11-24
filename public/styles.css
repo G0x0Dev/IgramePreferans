@@ -451,3 +451,63 @@
   }
   .game-stage.has-mobile-dock .auction-bid-line .button{min-height:41px}
 }
+
+/* Public bidding choices appear directly next to each player's seat.
+   Last announcement is retained throughout the auction / suit-Igra reveal. */
+.seat .auction-choice{
+  display:inline-flex;align-items:center;justify-content:center;
+  max-width:145px;min-height:26px;padding:4px 8px;
+  border:1px solid #e0c486;background:#263c41ec;
+  border-radius:99px;color:#ffecbd;font-size:11px;font-weight:800;
+  line-height:1.2;white-space:normal;overflow-wrap:anywhere;
+  text-align:center;box-shadow:0 3px 10px #0009;
+}
+.seat .auction-choice.pass{
+  color:#e6e9e5;background:#41484de8;border-color:#a4abad;
+}
+.seat .auction-choice.igra{
+  background:#56388de9;color:#fff4ff;border-color:#b59bdd;
+}
+.seat .auction-choice.weaker{
+  background:#3d536ce9;color:#e1f4ff;border-color:#a3c4e3;
+}
+.seat .auction-choice.bid{
+  background:#86652aed;color:#fff2d1;border-color:#ecd293;
+}
+
+/* Played cards slide/drop from their owner's side to the centre. The animation
+   is applied only to the newly played card, never to historical trick cards. */
+.played.pos-left{--drop-x:-68px;--drop-y:-10px;--drop-rotation:-13deg}
+.played.pos-right{--drop-x:68px;--drop-y:-10px;--drop-rotation:13deg}
+.played.pos-me{--drop-x:0px;--drop-y:78px;--drop-rotation:5deg}
+.played.pos-top{--drop-x:0px;--drop-y:-78px;--drop-rotation:-5deg}
+.played.incoming .playing-card{
+  animation:card-drop-on-felt 390ms cubic-bezier(.18,.82,.26,1) both;
+  transform-origin:50% 60%;
+  will-change:transform,opacity;
+}
+@keyframes card-drop-on-felt{
+  0%{
+    opacity:.2;
+    transform:translate(var(--drop-x),var(--drop-y)) rotate(var(--drop-rotation)) scale(1.10);
+  }
+  72%{
+    opacity:1;
+    transform:translate(0,6px) rotate(-2deg) scale(.98);
+  }
+  100%{
+    opacity:1;
+    transform:translate(0,0) rotate(0deg) scale(1);
+  }
+}
+@media(max-width:600px){
+  .seat .auction-choice{max-width:103px;min-height:24px;padding:4px 6px;font-size:10px;line-height:1.1}
+  .seat.left .auction-choice,.seat.right .auction-choice{max-width:90px}
+  .played.pos-left{--drop-x:-39px;--drop-y:-8px}
+  .played.pos-right{--drop-x:39px;--drop-y:-8px}
+  .played.pos-me{--drop-y:55px}
+  .played.pos-top{--drop-y:-55px}
+}
+@media(prefers-reduced-motion:reduce){
+  .played.incoming .playing-card{animation:none;will-change:auto}
+}
