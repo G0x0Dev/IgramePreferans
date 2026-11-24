@@ -44,8 +44,9 @@ export function shuffle(deck) {
 export function createGame(settings = {}) {
   const startBula = Number.isInteger(+settings.startBula) && +settings.startBula >= 50 && +settings.startBula <= 120 ? +settings.startBula : 100;
   const maxRefe = [2,3,4].includes(+settings.maxRefe) ? +settings.maxRefe : 2;
+  const pikNoKontra = settings.pikNoKontra === 'all' ? 'all' : 'declarer';
   return {
-    phase: 'lobby', settings: { startBula, maxRefe },
+    phase: 'lobby', settings: { startBula, maxRefe, pikNoKontra },
     players: [null, null, null], dealer: 2, round: 0,
     hands: [[],[],[]], talon: [], discard: [],
     scores: { bula: [startBula,startBula,startBula], refe: [0,0,0], supe: [[0,0,0],[0,0,0],[0,0,0]] },
@@ -223,15 +224,25 @@ export function igraDeclare(g,seat,value){
   const a=g.auction;
   assert(a.handMode==='suit','No suit Igra declarations pending.');
   assert(seat===a.igraPlayers[a.igraDeclarations.length],'Only the next Igra claimant can declare.');
-  assert(isInt(value)&&value>=2&&value<=5,'Suit Igra must be Pik, Karo, Herc or Tref (2–5).');
-  a.igraDeclarations.push({seat,value});
-  log(g,publicName(g,seat)+': My Igra is '+contractName(value)+'.');
+  const earlier=a.igraDeclarations.filter(d=>Number.isInteger(d.value));
+  if(value==='weaker'){
+    assert(earlier.length>0 && Math.max(...earlier.map(d=>d.value))>2,
+      'You can say My game is weaker only after an earlier Igra claimant declared at least Karo.');
+    a.igraDeclarations.push({seat,value:null,weaker:true});
+    log(g,publicName(g,seat)+': My game is weaker (Moja je manja).');
+  }else{
+    assert(isInt(value)&&value>=2&&value<=5,'Suit Igra must be Pik, Karo, Herc or Tref (2–5).');
+    assert(value!==2 || a.igraPlayers[0]===seat,
+      'Only the first Igra claimant may declare Igra Pik; a later player cannot enter with Pik.');
+    a.igraDeclarations.push({seat,value});
+    log(g,publicName(g,seat)+': My Igra is '+contractName(value)+'.');
+  }
   if(a.igraDeclarations.length<a.igraPlayers.length){
     g.turn=a.igraPlayers[a.igraDeclarations.length];
     return;
   }
   // Highest declared suit wins; first claimant wins an equal suit.
-  const highest=a.igraDeclarations.reduce((winner,current)=>current.value>winner.value?current:winner);
+  const highest=a.igraDeclarations.filter(d=>Number.isInteger(d.value)).reduce((winner,current)=>current.value>winner.value?current:winner);
   a.highSeat=highest.seat;a.handValue=highest.value;a.bid=highest.value;
   endAuction(g);
 }
@@ -312,14 +323,23 @@ export function callPartner(g,seat,willCall) {
 }
 function beginPlay(g) {
   if(g.contract.value===2 && !g.contract.hand && g.multiplier===1) {
-    const written=addRefe(g,g.contract.declarer);
-    if(written) {
-      g.phase='summary'; g.turn=null;
-      g.summary={ kind:'pass', title:'Pik without kontra', details:'No kontra was given. Declarer received one refe; cards are redealt.',scoreChanges:[0,0,0],supaChanges:[0,0,0] };
-      log(g,'Ordinary Pik requires kontra: refe recorded, redeal.'); return;
+    // Optional friends' rule: give a refe to every eligible player instead
+    // of only the declarer. Both variants default to a -4 auto-pass if none
+    // of the targeted players can take another refe.
+    const recipients=g.settings.pikNoKontra==='all'?[0,1,2]:[g.contract.declarer];
+    const awarded=recipients.filter(i=>addRefe(g,i));
+    if(awarded.length){
+      g.phase='summary';g.turn=null;
+      const names=awarded.map(i=>publicName(g,i)).join(', ');
+      g.summary={kind:'pass',title:'Pik without Kontra',
+        details:'No Kontra: '+names+' received a refe. Cards are redealt.',
+        scoreChanges:[0,0,0],supaChanges:[0,0,0]};
+      log(g,'Pik without Kontra: refe awarded to '+names+'; redeal.');
+      return;
     }
     g.tricks[g.contract.declarer]=10;
-    finishRound(g,'Pik without kontra: no more refe can be recorded, so declarer passes automatically.'); return;
+    finishRound(g,'Pik without Kontra: no more refe can be recorded, so the declarer passes automatically.');
+    return;
   }
   g.active=[g.contract.declarer,...otherSeats(g.contract.declarer).filter(i=>g.follows[i])];
   if(g.doubler!==null) g.active=[0,1,2];
@@ -434,12 +454,14 @@ function finishRound(g,note='') {
   // Only completed tricks count. The old "10 - declarer tricks" assumed
   // all ten were played, which over-awarded supe when a hand ends early.
   const defenseTricks=defenders.reduce((sum,i)=>sum+g.tricks[i],0);
+  const stoppedAtFive=g.contract.value!==6 && defenseTricks>=5 && g.trickNumber<10;
   const decSuccess=g.contract.value===6 ? won===0 : won>=6;
   g.scores.bula[dec] += decSuccess ? -points : points;
   if(g.contract.value===6) {
     if(!decSuccess) {
       const supaBase=(g.contract.hand?70:60)*g.multiplier*refeFactor;
-      if(g.doubler!==null) g.scores.supe[g.doubler][dec]+=supaBase;
+      // Normally EACH defender gets 60/70. The Kontra caller assumes BOTH shares.
+      if(g.doubler!==null) g.scores.supe[g.doubler][dec]+=supaBase*defenders.length;
       else defenders.forEach(i=>g.scores.supe[i][dec]+=supaBase);
     }
     if(g.doubler!==null && decSuccess) g.scores.bula[g.doubler]+=points;
@@ -452,14 +474,17 @@ function finishRound(g,note='') {
   } else {
     defenders.filter(i=>g.follows[i]).forEach(i=>{
       g.scores.supe[i][dec]+=g.tricks[i]*points;
-      if(g.tricks[i]<2) g.scores.bula[i]+=points;
+      // If we stopped before trick ten at five combined defender tricks,
+      // the other defender did not have the full hand to meet the two-trick
+      // individual minimum. Keep supe for actual tricks but waive this fall.
+      if(g.tricks[i]<2 && !stoppedAtFive) g.scores.bula[i]+=points;
     });
   }
   if(g.scores.refe[dec]>0) g.scores.refe[dec]--;
   const changes=g.scores.bula.map((v,i)=>v-beforeBula[i]);
   const supeChanges=g.scores.supe.map((row,i)=>row.reduce((n,v,j)=>n+v-beforeSupe[i][j],0));
   g.summary={kind:'played',title:`${publicName(g,dec)} ${decSuccess?'passed':'fell'} on ${contractName(g.contract.value,g.contract.hand)}`,
-    details:note||`${won} tricks for the declarer. ${g.multiplier>1?`Kontra multiplier ×${g.multiplier}. `:''}${refeFactor>1?'Refe doubled the stakes.':''}`,
+    details:(note||`${won} tricks for the declarer. ${g.multiplier>1?`Kontra multiplier ×${g.multiplier}. `:''}${refeFactor>1?'Refe doubled the stakes.':''}`)+(stoppedAtFive?' Individual defender bula penalties waived because the hand ended early.':''),
     scoreChanges:changes, supaChanges:supeChanges,
     tricks:[...g.tricks], contract:{...g.contract}, multiplier:g.multiplier, refeFactor};
   g.phase='summary'; g.turn=null;
@@ -469,6 +494,26 @@ function finishRound(g,note='') {
     g.summary.details += ' Match complete: total bula is zero or below.';
     log(g,'Match finished. Compare final scores (lower is better).');
   }
+}
+// Otpisivanje is an equal reduction of everyone's bula so their total
+// reaches exactly zero. Leftover bula points are deducted first from the
+// player with the highest (worst) current bula; supa and refe are unchanged.
+export function settleMatch(g) {
+  assert(g.phase==='summary' && g.round>0 && !g.finished,
+    'Otpisivanje is only possible between rounds of an unfinished match.');
+  const total=g.scores.bula.reduce((sum,v)=>sum+v,0);
+  assert(Number.isSafeInteger(total) && total>0, 'No remaining positive bula to settle.');
+  const base=Math.floor(total/3),extra=total%3;
+  const order=[0,1,2].sort((a,b)=>g.scores.bula[b]-g.scores.bula[a]||a-b);
+  const deducted=[base,base,base];
+  for(let n=0;n<extra;n++)deducted[order[n]]++;
+  for(let i=0;i<3;i++)g.scores.bula[i]-=deducted[i];
+  g.summary={kind:'settlement',title:'Match settled by agreement · Otpisivanje',
+    details:'All three players agreed to end the match. Bula was reduced fairly to a total of zero; existing supa and refe were left unchanged.',
+    scoreChanges:deducted.map(n=>-n),supaChanges:[0,0,0]};
+  g.finished=true;g.phase='summary';g.turn=null;
+  log(g,'Otpisivanje approved by all three: bula reductions '+deducted.join(', ')+'.');
+  return deducted;
 }
 export function finalScores(g) {
   return g.scores.bula.map((b,i)=>{
