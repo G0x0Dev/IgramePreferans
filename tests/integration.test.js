@@ -62,13 +62,13 @@ test('one shared table: five friends, settings, private hands and reconnection',
     assert.ok(peers[4].state.members.every(m=>!('token' in m)));
     peers[4].action('settings',{startBula:50,maxRefe:4});
     await until(()=>peers[4].errors.length>0);
-    assert.deepEqual(peers[4].state.settings,{startBula:100,maxRefe:2});
+    assert.deepEqual(peers[4].state.settings,{startBula:100,maxRefe:2,pikNoKontra:'declarer'});
     assert.equal((await peers[1].request('sitOut')).ok,true);
     await until(()=>peers[1].state.seat===null);
     assert.equal((await peers[3].request('takeSeat')).ok,true);
     await until(()=>peers[3].state.seat===1);
-    peers[3].action('settings',{startBula:60,maxRefe:3});
-    await until(()=>peers[0].state?.settings.startBula===60 && peers[0].state?.settings.maxRefe===3);
+    peers[3].action('settings',{startBula:60,maxRefe:3,pikNoKontra:'all'});
+    await until(()=>peers[0].state?.settings.startBula===60 && peers[0].state?.settings.maxRefe===3 && peers[0].state?.settings.pikNoKontra==='all');
     peers[0].action('start');
     await until(()=>peers.slice(0,5).every(p=>p.state?.phase==='auction'));
     assert.deepEqual(peers.slice(0,5).map(p=>p.state.hands.length),[10,0,10,10,0]);
@@ -288,6 +288,63 @@ test('two friends announce Igra without raising, then reveal suit bids directly'
     assert.ok(peers.every(p=>p.errors.length===0),'no client errors');
   }finally{
     peers.forEach(p=>{try{p.close();}catch{}});
+    proc.kill('SIGTERM');
+  }
+});
+
+test('three friends can unanimously settle a finished round via otpisivanje, reject, and archive',async()=>{
+  const port=30000+randomInt(20000),historyFile='/tmp/preferans-agreement-'+port+'.json';
+  const proc=spawn(process.execPath,['server.js'],{
+    cwd:process.cwd(),env:{...process.env,PORT:String(port),HISTORY_FILE:historyFile},stdio:'ignore'});
+  const peers=[];
+  try{
+    let up=false;
+    for(let i=0;i<100;i++){
+      try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){up=true;break;}}catch{}
+      await delay(20);
+    }
+    assert.ok(up,'server started');
+    for(const name of ['Nina','Boris','Tina']){
+      const peer=new Peer(`ws://127.0.0.1:${port}/ws`);peers.push(peer);
+      await peer.ready;
+      assert.equal((await peer.request('joinTable',{name})).ok,true);
+    }
+    await until(()=>peers.every(p=>p.state?.members.length===3));
+    const bySeat=seat=>peers.find(p=>p.state.seat===seat);
+    peers[0].action('start');
+    await until(()=>peers[0].state?.phase==='auction');
+    assert.equal((await peers[0].request('requestSettlement')).ok,false,
+      'agreement cannot be requested during an active hand');
+    for(let i=0;i<3;i++){
+      const actor=peers[0].state.turn;
+      bySeat(actor).action('bid',{action:'pass'});
+      await until(()=>peers[0].state.phase==='summary'||peers[0].state.auction.history.length===i+1);
+    }
+    assert.equal(peers[0].state.phase,'summary');
+    assert.equal(peers[0].state.canSettle,true);
+    assert.equal((await peers[0].request('requestSettlement')).ok,true);
+    await until(()=>peers.every(p=>p.state?.settlementRequest!==null));
+    const approvals=peers.filter(p=>p!==peers[0]);
+    assert.equal((await approvals[0].request('voteSettlement',{approve:true})).ok,true);
+    assert.equal(peers[0].state.finished,false,'one opponent alone cannot finalize');
+    assert.equal((await approvals[1].request('voteSettlement',{approve:false})).ok,true);
+    await until(()=>peers.every(p=>p.state?.settlementRequest===null));
+    assert.equal(peers[0].state.finished,false,'rejection leaves scores and match intact');
+    assert.deepEqual(peers[0].state.scores.bula,[100,100,100]);
+    assert.equal((await peers[0].request('requestSettlement')).ok,true);
+    assert.equal((await approvals[0].request('voteSettlement',{approve:true})).ok,true);
+    assert.equal((await approvals[1].request('voteSettlement',{approve:true})).ok,true);
+    await until(()=>peers.every(p=>p.state?.finished===true));
+    assert.equal(peers[0].state.phase,'summary');
+    assert.equal(peers[0].state.summary.kind,'settlement');
+    assert.equal(peers[0].state.scores.bula.reduce((x,y)=>x+y),0);
+    await until(()=>peers[0].state.history?.length===1);
+    assert.equal(peers[0].state.history[0].players.length,3);
+    assert.deepEqual(peers[0].state.history[0].players.map(p=>p.score),[0,0,0]);
+    assert.equal((await peers[0].request('requestSettlement')).ok,false,
+      'cannot settle an already completed match');
+  }finally{
+    for(const p of peers)try{p.close();}catch{}
     proc.kill('SIGTERM');
   }
 });
