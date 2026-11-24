@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  makeDeck,shuffle,sortHand,createGame,deal,auctionAction,takeTalon,discard,declare,
+  makeDeck,shuffle,sortHand,createGame,deal,auctionAction,igraDeclare,takeTalon,discard,declare,
   follow,callPartner,doubleAction,legalCards,winningSeat,playCard,advanceTrick,
   finalScores,viewFor
 } from '../game.js';
@@ -86,52 +86,104 @@ test('sequential raising and Mogu priority retain their normal rules',()=>{
   assert.equal(h.auction.bid,7);
   assert.equal(h.auction.hand,true);
 });
-test('Igra options share the opening row, then disappear after each player has acted',()=>{
+test('opening buttons offer next bid, Igra, Igra Betl and Igra Sans',()=>{
   const g=game();
   assert.deepEqual(viewFor(g,1,'TABLE').auctionOptions,
-    {ordinary:2,hand:[2,3,4,5,6,7]});
-  auctionAction(g,1,'bid',2); // First player's opening action.
+    {ordinary:2,igra:true,betl:true,sans:true});
+  auctionAction(g,1,'bid',2);
   assert.deepEqual(viewFor(g,2,'TABLE').auctionOptions,
-    {ordinary:3,hand:[2,3,4,5,6,7]});
-  auctionAction(g,2,'bid',3); // Second opening action.
+    {ordinary:3,igra:true,betl:true,sans:true});
+  auctionAction(g,2,'bid',3);
   assert.deepEqual(viewFor(g,0,'TABLE').auctionOptions,
-    {ordinary:4,hand:[2,3,4,5,6,7]});
-  auctionAction(g,0,'bid',4); // Third opening action.
+    {ordinary:4,igra:true,betl:true,sans:true});
+  auctionAction(g,0,'bid',4);
   assert.deepEqual(viewFor(g,1,'TABLE').auctionOptions,
-    {ordinary:5,hand:[]});
+    {ordinary:5,igra:false,betl:false,sans:false});
   assert.deepEqual(viewFor(g,2,'TABLE').auctionOptions,
-    {ordinary:null,hand:[]}, 'only the acting player receives bids');
+    {ordinary:null,igra:false,betl:false,sans:false});
+  assert.throws(()=>auctionAction(g,1,'igra'),/first bidding round/i);
   assert.throws(()=>auctionAction(g,1,'hand',7),/first bidding round/i);
-  assert.equal(g.auction.bid,4,'illegal Igra must not change the auction');
   auctionAction(g,1,'bid',5);
   assert.equal(g.auction.bid,5);
 });
-test('Igra can be raised in the first bidding round but not afterward',()=>{
+test('multiple Igra announcements are resolved by direct suit declarations without raising',()=>{
   const g=game();
-  auctionAction(g,1,'hand',2);
+  auctionAction(g,1,'igra');
+  assert.equal(g.auction.handMode,'suit');
+  assert.equal(g.auction.handValue,null);
   assert.deepEqual(viewFor(g,2,'TABLE').auctionOptions,
-    {ordinary:null,hand:[3,4,5,6,7]});
-  auctionAction(g,2,'hand',3);
-  auctionAction(g,0,'pass');
-  assert.deepEqual(viewFor(g,1,'TABLE').auctionOptions,
-    {ordinary:null,hand:[]});
-  assert.throws(()=>auctionAction(g,1,'hand',4),/first bidding round/i);
-  auctionAction(g,1,'pass');
-  assert.equal(g.phase,'following','early Igra declaration continues to the hand game');
+    {ordinary:null,igra:true,betl:true,sans:true});
+  auctionAction(g,2,'igra');
+  auctionAction(g,0,'igra');
+  assert.equal(g.phase,'igraReveal');
+  assert.deepEqual(g.auction.igraPlayers,[1,2,0]);
+  igraDeclare(g,1,2);
+  assert.equal(g.phase,'igraReveal');
+  assert.equal(g.turn,2);
+  igraDeclare(g,2,5); // Jumps directly to Tref.
+  assert.equal(g.phase,'igraReveal');
+  igraDeclare(g,0,3); // Lower direct declaration is permitted.
+  assert.equal(g.phase,'following');
+  assert.equal(g.contract.declarer,2);
+  assert.equal(g.contract.value,5);
+  assert.equal(g.contract.hand,true);
+  assert.equal(g.hands[2].length,10,'no talon on suit Igra');
 });
-test('a new hand starts with its own first bidding round',()=>{
+test('equal suit Igra bids are won by the earliest Igra claimant',()=>{
+  const g=game();
+  auctionAction(g,1,'igra');
+  auctionAction(g,2,'igra');
+  auctionAction(g,0,'pass');
+  assert.equal(g.phase,'igraReveal');
+  igraDeclare(g,1,4);
+  igraDeclare(g,2,4);
+  assert.equal(g.contract.declarer,1);
+  assert.equal(g.contract.value,4);
+  assert.equal(g.phase,'following');
+});
+test('Igra Betl and Igra Sans are declared directly and beat ordinary Igra',()=>{
+  const g=game();
+  auctionAction(g,1,'igra');
+  auctionAction(g,2,'hand',6);
+  assert.deepEqual(viewFor(g,0,'TABLE').auctionOptions,
+    {ordinary:null,igra:false,betl:false,sans:true});
+  assert.throws(()=>auctionAction(g,0,'igra'),/Only Igra Sans/i);
+  assert.throws(()=>auctionAction(g,0,'hand',5),/only Igra Betl or Igra Sans/i);
+  auctionAction(g,0,'hand',7);
+  assert.equal(g.phase,'following');
+  assert.equal(g.contract.hand,true);
+  assert.equal(g.contract.value,7);
+  assert.equal(g.contract.declarer,0);
+  const h=game();
+  auctionAction(h,1,'hand',6);
+  auctionAction(h,2,'pass');auctionAction(h,0,'pass');
+  assert.equal(h.phase,'doubles');
+  assert.equal(h.contract.value,6);
+});
+test('after ordinary Pik an Igra claimant reveals any suit without increasing',()=>{
+  const g=game();
+  auctionAction(g,1,'bid',2);
+  auctionAction(g,2,'igra');
+  auctionAction(g,0,'pass');
+  assert.equal(g.phase,'igraReveal');
+  assert.equal(g.turn,2);
+  igraDeclare(g,2,5);
+  assert.equal(g.contract.declarer,2);
+  assert.equal(g.contract.value,5);
+  assert.equal(g.phase,'following');
+});
+test('a new hand starts with its own Igra opening opportunity',()=>{
   const g=game();
   auctionAction(g,1,'bid',2);
   auctionAction(g,2,'pass');auctionAction(g,0,'pass');
   assert.equal(g.phase,'talon');
-  // End this hand through the standard flow, then deal a fresh one.
   takeTalon(g,1);discard(g,1,g.hands[1].slice(0,2));declare(g,1,5);
   follow(g,g.turn,'ne');follow(g,g.turn,'ne');
   assert.equal(g.phase,'summary');
   deal(g,makeDeck());
   assert.equal(g.phase,'auction');
   assert.deepEqual(viewFor(g,g.turn,'TABLE').auctionOptions,
-    {ordinary:2,hand:[2,3,4,5,6,7]});
+    {ordinary:2,igra:true,betl:true,sans:true});
 });
 test('invited defender cannot Kontra, earns no bula or supe, while inviter receives combined tricks',()=>{
   const g=game();
@@ -193,12 +245,14 @@ test('priority bidder can match using Mogu',()=>{
   assert.equal(g.contract.declarer,1);
   assert.equal(g.contract.minimum,3);
 });
-test('higher hand declaration overtakes lower, no talon taken',()=>{
+test('higher Igra suit declaration overtakes lower without taking talon',()=>{
   const g=game();
-  auctionAction(g,1,'hand',2);
-  auctionAction(g,2,'hand',4);
+  auctionAction(g,1,'igra');
+  auctionAction(g,2,'igra');
   auctionAction(g,0,'pass');
-  auctionAction(g,1,'pass');
+  assert.equal(g.phase,'igraReveal');
+  igraDeclare(g,1,2);
+  igraDeclare(g,2,4);
   assert.equal(g.phase,'following');
   assert.equal(g.contract.value,4);
   assert.equal(g.contract.hand,true);
