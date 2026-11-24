@@ -99,7 +99,19 @@
     if(localStorage.getItem(MODE_KEY)===mode)localStorage.removeItem(MODE_KEY);
     state=null;session=null;render();
   });
+  // Animate only a freshly appended card, not the whole trick each time
+  // the server sends a score/turn update. Reconnects and rerenders remain still.
+  function freshPlayedCard(previous,next){
+    if(!previous||previous.round!==next.round ||
+       !['playing','trickReview'].includes(previous.phase)||
+       !['playing','trickReview','summary'].includes(next.phase))return null;
+    const before=previous.trick||[],after=next.trick||[];
+    if(after.length!==before.length+1)return null;
+    if(!before.every((p,i)=>after[i]?.seat===p.seat&&after[i]?.card===p.card))return null;
+    return after[after.length-1];
+  }
   socket.on('state',g=>{
+    const newlyPlayed=freshPlayedCard(state,g);
     state=g;selected=selected.filter(c=>g.hands.includes(c));
     if(g.mode!=='solo'&&g.history?.length){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(g.history));}catch{}}
     else if(g.mode!=='solo'&&g.seat!==null && !historyRestoreTried){
@@ -109,7 +121,7 @@
         if(Array.isArray(saved)&&saved.length)socket.emit('restoreHistory',{records:saved},a=>{if(!a?.ok)toast('Could not restore saved scores.');});
       }catch{}
     }
-    render();
+    render(newlyPlayed);
   });
   socket.on('actionError',message=>sayError(message));
 
@@ -249,17 +261,42 @@
       <div class="lobby-foot">${isHost?button('Start match · Deal the cards','start',{variant:'primary large',disabled:!canStart}):'<p class="text-muted">You are waiting. Take an open seat to play, or watch when the match begins.</p>'}</div>
       ${matchHistory()}</main></div>`;
   }
+  // Auction decisions are public. Display each player's latest choice beside
+  // their table seat, including Pass, Igra and suit declarations.
+  function auctionChoiceFor(g,seat) {
+    if(!g.auction||!['auction','igraReveal'].includes(g.phase))return null;
+    const a=g.auction;
+    if(g.phase==='igraReveal'){
+      const declaration=a.igraDeclarations?.find(d=>d.seat===seat);
+      if(declaration)return declaration.weaker
+        ? {label:'Moja je manja',kind:'weaker'}
+        : {label:'Igra '+contractName(declaration.value),kind:'igra'};
+    }
+    const last=a.history?.slice().reverse().find(h=>h.seat===seat);
+    if(!last)return null;
+    switch(last.action){
+      case 'pass':return {label:'Dalje',kind:'pass'};
+      case 'bid':return {label:contractName(last.value),kind:'bid'};
+      case 'igra':return {label:'Igra',kind:'igra'};
+      case 'hand':return {label:'Igra '+contractName(last.value),kind:'igra'};
+      case 'mogu':return {label:'Mogu',kind:'bid'};
+      default:return null;
+    }
+  }
   function playerPlace(i,pos) {
     const p=state.players[i],turn=state.turn===i, me=i===state.seat;
     const role=state.contract ? (i===state.contract.declarer?'Declarer':state.active.length?state.active.includes(i)?'Defender':'Sitting out':state.follows[i]===false?'Declined':state.follows[i]===true?'Defender':'') : i===state.dealer?'Dealer':'';
     const tricks=state.tricks[i];
     const response=state.followMessages?.[i];
     const responseText=response && i!==state.contract?.declarer ? ` · “${esc(response)}”` : '';
+    const auctionChoice=auctionChoiceFor(state,i);
     return `<div class="seat ${pos} ${turn?'current':''}"><div class="avatar">${esc(p?.name?.charAt(0)?.toUpperCase()||'?')}</div>
-      <span class="person">${esc(p?.name||'—')}${me?' (you)':''}</span><span class="info">${esc(role)}${responseText}${role&&state.contract?' · ':''}${state.contract?`${tricks} trick${tricks!==1?'s':''}`:''}</span>
+      <span class="person">${esc(p?.name||'—')}${me?' (you)':''}</span>
+      ${auctionChoice?`<span class="auction-choice ${auctionChoice.kind}" aria-label="${esc(nameOf(i))} bid: ${esc(auctionChoice.label)}">${esc(auctionChoice.label)}</span>`:''}
+      <span class="info">${esc(role)}${responseText}${role&&state.contract?' · ':''}${state.contract?`${tricks} trick${tricks!==1?'s':''}`:''}</span>
       ${!me&&state.handCounts[i]?`<div class="mini-backs"><span class="mini-back"></span><span class="mini-back"></span><span class="mini-back"></span><span class="mini-back"></span></div>`:''}</div>`;
   }
-  function table() {
+  function table(playedCard=null) {
     const me=state.seat??0, left=seats(me+2),right=seats(me+1);
     const cards=state.trick.length?state.trick:state.phase==='trickReview'&&state.lastTrick?state.lastTrick.cards:[];
     const atSeat=seat=>cards.find(p=>p.seat===seat)?.card;
@@ -270,7 +307,11 @@
       ${playerPlace(left,'left')}${playerPlace(right,'right')}${playerPlace(me,'me')}
       <div class="center-play">${cards.length?[
         {seat:left,position:'pos-left'}, {seat:right,position:'pos-right'}, {seat:me,position:'pos-me'}
-      ].filter(p=>atSeat(p.seat)).map(p=>`<div class="played ${p.position}">${cardHtml(atSeat(p.seat),{tiny:true})}</div>`).join(''):
+      ].filter(p=>atSeat(p.seat)).map(p=>{
+        const card=atSeat(p.seat);
+        const incoming=playedCard?.seat===p.seat&&playedCard.card===card;
+        return `<div class="played ${p.position}${incoming?' incoming':''}">${cardHtml(card,{tiny:true})}</div>`;
+      }).join(''):
       ''}</div></div>
       <div class="table-note">${status}${state.multiplier>1?` · ×${state.multiplier} stakes`:''}</div></div>`;
   }
@@ -403,7 +444,7 @@
       <div class="panel panel-pad"><span class="eyebrow">Table history</span><h3 class="side-title">Recent actions</h3><ul class="log">${[...g.log].reverse().map(s=>`<li>${esc(s)}</li>`).join('')||'<li>Waiting for the first deal.</li>'}</ul></div>
       ${matchHistory()}</aside>`;
   }
-  function gameScreen() {
+  function gameScreen(playedCard=null) {
     const subtitle=state.seat===null?'Watching · waiting to play':state.turn===null?'Waiting for the next step':`${nameOf(state.turn)}${state.turn===state.seat?' (you)':''} to act`;
     // Keep actions near the thumb on phones when it is this player's turn.
     // During other turns, results and card play, keep the normal document flow.
@@ -411,13 +452,13 @@
       ['auction','igraReveal','talon','discard','contract','following','calling','doubles'].includes(state.phase);
     return `<div class="app">${header()}<div class="layout"><main class="main-col"><section class="panel game-stage${mobileDock?' has-mobile-dock':''}" data-phase="${esc(state.phase)}">
       <div class="stage-header"><div><span class="eyebrow">Round ${state.round} · Dealer: ${esc(nameOf(state.dealer))}</span><h2>${phaseTitle[state.phase]}</h2><p>${esc(subtitle)}</p></div><span class="phase-tag">${state.contract?contractName(state.contract.value,state.contract.hand):'Bidding'}</span></div>
-      ${table()}${hand()}${actionPanel()}</section>
+      ${table(playedCard)}${hand()}${actionPanel()}</section>
       ${state.lastTrick?`<div class="last-trick"><small>Last trick · ${esc(nameOf(state.lastTrick.winner))} won:</small>${state.lastTrick.cards.map(p=>cardHtml(p.card)).join('')}</div>`:''}
       </main>${sidebar()}</div></div>`;
   }
-  function render(){
+  function render(playedCard=null){
     if(!root)return;
-    root.innerHTML=state?(state.phase==='lobby'?lobby():gameScreen()):welcome();
+    root.innerHTML=state?(state.phase==='lobby'?lobby():gameScreen(playedCard)):welcome();
   }
   function action(a,value) {
     if(!connected){toast('Connection lost — reconnecting.');return;}
