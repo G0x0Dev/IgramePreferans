@@ -282,12 +282,23 @@
     let body='';
     if(s.phase==='auction') {
       const a=s.auction;
-      if(!mine) body=`<div class="actions-title">${esc(nameOf(s.turn))} is bidding</div><div class="actions-subtitle">Highest bid: ${a.highSeat===null?'None':`${contractName(a.bid,a.hand)} by ${nameOf(a.highSeat)}`}. ${a.priority!==null?`${esc(nameOf(a.priority))} has Mogu priority.`:''}</div>`;
+      const opening=a.history.length<3;
+      const options=s.auctionOptions||{ordinary:null,hand:[]};
+      if(!mine) body=`<div class="actions-title">${esc(nameOf(s.turn))} is bidding</div><div class="actions-subtitle">Highest bid: ${a.highSeat===null?'None':`${contractName(a.bid,a.hand)} by ${esc(nameOf(a.highSeat))}`}. ${a.priority!==null?`${esc(nameOf(a.priority))} has Mogu priority.`:''}</div>`;
       else {
-        body=`<div class="actions-title">Your turn to bid</div><div class="actions-subtitle">${a.hand?`A hand declaration (${contractName(a.handValue,true)}) is on the table. Only a stronger hand declaration can beat it.`:`Current bid: ${a.highSeat===null?'None':`${contractName(a.bid)} — ${esc(nameOf(a.highSeat))}`}. Next ordinary bid: ${a.bid<7?contractName(a.bid+1):'No higher bid available'}. You can still say Mogu (if you have priority), declare Igra, or pass.`}</div>`;
-        if(!a.hand && a.bid<7) body+=`<div class="group-label">Ordinary bidding · next contract only</div>${contractButtons(CONTRACTS.filter(c=>c.v===a.bid+1),'bid')}`;
-        if(!a.hand&&a.highSeat!==null&&a.highSeat!==s.seat&&a.priority===s.seat) body+=`<div class="action-row" style="margin-top:9px">${button(`Mogu ${a.bid}`,'mogu',{variant:'active'})}</div>`;
-        if(a.handValue!==7) body+=`<div class="group-label">Declare from hand · skip talon · +1 game value</div>${contractButtons(CONTRACTS.filter(c=>!a.hand||c.v>a.handValue),'hand',true)}`;
+        const next=CONTRACTS.find(c=>c.v===options.ordinary);
+        const handBids=CONTRACTS.filter(c=>options.hand.includes(c.v));
+        const choices=[
+          ...(next?[button(next.n,'bid',{value:next.v,extra:icon(next)})]:[]),
+          ...handBids.map(c=>button(`Igra ${c.n}`,'hand',{value:c.v,extra:icon(c)}))
+        ];
+        body=`<div class="actions-title">Your turn to bid</div>
+          <div class="actions-subtitle">${a.highSeat===null?'No bid yet':`Current bid: ${contractName(a.bid,a.hand)} — ${esc(nameOf(a.highSeat))}`}.
+          ${opening?'Opening turn: Igra skips the talon and adds +1 game value.':'Only the next ordinary contract can be bid now.'}</div>`;
+        if(choices.length)body+=`<div class="group-label">${opening?'Opening bids · ordinary and Igra together':'Next possible bid'}</div>
+          <div class="auction-bid-line" role="group" aria-label="Available bids">${choices.join('')}</div>`;
+        if(!a.hand&&a.highSeat!==null&&a.highSeat!==s.seat&&a.priority===s.seat)
+          body+=`<div class="action-row" style="margin-top:9px">${button(`Mogu ${a.bid}`,'mogu',{variant:'active'})}</div>`;
         body+=`<div class="soft-divider"></div>${button('Dalje · Pass','pass',{variant:'subtle'})}`;
       }
     } else if(s.phase==='talon') {
