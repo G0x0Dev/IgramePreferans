@@ -454,8 +454,8 @@ function finishRound(g,note='') {
   // Only completed tricks count. The old "10 - declarer tricks" assumed
   // all ten were played, which over-awarded supe when a hand ends early.
   const defenseTricks=defenders.reduce((sum,i)=>sum+g.tricks[i],0);
-  const stoppedAtFive=g.contract.value!==6 && defenseTricks>=5 && g.trickNumber<10;
   const decSuccess=g.contract.value===6 ? won===0 : won>=6;
+  let defensiveOutcome='';
   g.scores.bula[dec] += decSuccess ? -points : points;
   if(g.contract.value===6) {
     if(!decSuccess) {
@@ -472,19 +472,27 @@ function finishRound(g,note='') {
     g.scores.supe[g.caller][dec]+=defenseTricks*points;
     if(defenseTricks<4) g.scores.bula[g.caller]+=points;
   } else {
-    defenders.filter(i=>g.follows[i]).forEach(i=>{
+    const participating=defenders.filter(i=>g.follows[i]);
+    // House rule: when BOTH defenders play, they share a four-trick goal.
+    // A 3+1, 4+0 or 2+2 split passes for both; only the individual supe
+    // awards depend on which defender captured a given trick.
+    // A lone defender (without an invited partner) keeps the existing
+    // individual two-trick goal. Invited and Kontra hands are handled above.
+    const goal=participating.length===2 ? 4 : 2;
+    const passed=defenseTricks>=goal;
+    participating.forEach(i=>{
       g.scores.supe[i][dec]+=g.tricks[i]*points;
-      // If we stopped before trick ten at five combined defender tricks,
-      // the other defender did not have the full hand to meet the two-trick
-      // individual minimum. Keep supe for actual tricks but waive this fall.
-      if(g.tricks[i]<2 && !stoppedAtFive) g.scores.bula[i]+=points;
+      if(!passed)g.scores.bula[i]+=points;
     });
+    if(participating.length===2) {
+      defensiveOutcome=` Both defenders ${passed?'passed':'fell'} together with ${defenseTricks} tricks (need 4). Individual trick counts affect supe only.`;
+    }
   }
   if(g.scores.refe[dec]>0) g.scores.refe[dec]--;
   const changes=g.scores.bula.map((v,i)=>v-beforeBula[i]);
   const supeChanges=g.scores.supe.map((row,i)=>row.reduce((n,v,j)=>n+v-beforeSupe[i][j],0));
   g.summary={kind:'played',title:`${publicName(g,dec)} ${decSuccess?'passed':'fell'} on ${contractName(g.contract.value,g.contract.hand)}`,
-    details:(note||`${won} tricks for the declarer. ${g.multiplier>1?`Kontra multiplier ×${g.multiplier}. `:''}${refeFactor>1?'Refe doubled the stakes.':''}`)+(stoppedAtFive?' Individual defender bula penalties waived because the hand ended early.':''),
+    details:(note||`${won} tricks for the declarer. ${g.multiplier>1?`Kontra multiplier ×${g.multiplier}. `:''}${refeFactor>1?'Refe doubled the stakes.':''}`)+defensiveOutcome,
     scoreChanges:changes, supaChanges:supeChanges,
     tricks:[...g.tricks], contract:{...g.contract}, multiplier:g.multiplier, refeFactor};
   g.phase='summary'; g.turn=null;
