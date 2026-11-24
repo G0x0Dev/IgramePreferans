@@ -330,6 +330,70 @@ test('call partner: combined four tricks required, caller receives all supe',()=
   assert.equal(g.scores.supe[caller][dec],24);
   assert.equal(g.scores.bula[caller],108);
 });
+test('Kontra forces all three to play even after a defender answered Ne or Ne bi',()=>{
+  for(const decline of ['ne','ne-bi']){
+    const g=game();
+    const dec=winBid(g,5);
+    const participating=g.turn;
+    follow(g,participating,'dodjem');
+    const initiallyDeclined=g.turn;
+    follow(g,initiallyDeclined,decline);
+    assert.equal(g.phase,'calling');
+    assert.equal(g.follows[initiallyDeclined],false);
+    callPartner(g,participating,false);
+    assert.equal(g.phase,'doubles');
+    doubleAction(g,participating,'kontra');
+    assert.equal(g.doubler,participating);
+    assert.deepEqual(g.active,[0,1,2],'Kontra immediately seats all three');
+    assert.deepEqual(g.follows,[true,true,true],'previous refusal is overridden');
+    assert.equal(g.followMessages[initiallyDeclined],decline==='ne'?'Ne':'Ne bi',
+      'the original answer is retained for the audit log');
+    assert.equal(g.phase,'doubles');
+    doubleAction(g,dec,'ok');
+    assert.equal(g.phase,'playing');
+    assert.deepEqual(g.active,[0,1,2]);
+    assert.equal(viewFor(g,initiallyDeclined,'TABLE').active.includes(initiallyDeclined),true);
+    const participants=[];
+    for(let i=0;i<3;i++){
+      const actor=g.turn;
+      participants.push(actor);
+      const card=legalCards(g,actor)[0];
+      assert.ok(card,'every player has a legal card when Kontra is active');
+      playCard(g,actor,card);
+    }
+    assert.equal(g.phase,'trickReview','trick requires all three cards');
+    assert.deepEqual([...participants].sort(),[0,1,2]);
+    assert.equal(g.lastTrick.cards.length,3);
+    // Only the defender who said Kontra scores the side's captured tricks.
+    g.tricks=[0,0,0];
+    g.tricks[dec]=2;
+    g.tricks[participating]=3;
+    g.tricks[initiallyDeclined]=2;
+    g.trickNumber=7;
+    g.lastTrick={winner:participating,number:7,cards:[]};
+    advanceTrick(g);
+    assert.equal(g.phase,'summary','the fifth defensive trick ends the hand');
+    assert.equal(g.scores.supe[participating][dec],100);
+    assert.equal(g.scores.supe[initiallyDeclined][dec],0);
+    assert.equal(g.scores.bula[initiallyDeclined],100);
+  }
+});
+test('Kontra also forces an invited partner to play but does not give them Kontra or points',()=>{
+  const g=game(),dec=winBid(g,5);
+  const inviter=g.turn;
+  follow(g,inviter,'dodjem');
+  const invited=g.turn;
+  follow(g,invited,'ne');
+  callPartner(g,inviter,true);
+  assert.equal(g.invited,invited);
+  doubleAction(g,inviter,'kontra');
+  assert.deepEqual(g.active,[0,1,2]);
+  doubleAction(g,dec,'ok');
+  assert.equal(g.phase,'playing');
+  assert.deepEqual(g.active,[0,1,2]);
+  assert.equal(g.follows[invited],true);
+  assert.deepEqual(g.scores.supe[invited],[0,0,0]);
+});
 test('kontra → rekontra → subkontra ends at ×8 (mort is removed)',()=>{
   const g=game(); const dec=winBid(g,5);
   follow(g,g.turn,true);follow(g,g.turn,true);
