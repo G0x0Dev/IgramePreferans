@@ -243,3 +243,51 @@ test('solo computer table is isolated from the friends room, reconnects, and can
     server.kill('SIGTERM');
   }
 });
+
+test('two friends announce Igra without raising, then reveal suit bids directly',async()=>{
+  const port=30000+randomInt(20000);
+  const proc=spawn(process.execPath,['server.js'],{cwd:process.cwd(),env:{...process.env,PORT:String(port)},stdio:'ignore'});
+  const peers=[];
+  try{
+    let up=false;
+    for(let i=0;i<100;i++){
+      try{if((await fetch(`http://127.0.0.1:${port}/health`)).ok){up=true;break;}}catch{}
+      await delay(20);
+    }
+    assert.ok(up,'server started');
+    for(const name of ['Ana','Bo','Cene']){
+      const p=new Peer(`ws://127.0.0.1:${port}/ws`);peers.push(p);
+      await p.ready;
+      assert.equal((await p.request('joinTable',{name})).ok,true);
+    }
+    await until(()=>peers.every(p=>p.state?.members.length===3));
+    const at=seat=>peers.find(p=>p.state?.seat===seat);
+    peers[0].action('start');
+    await until(()=>peers[0].state?.phase==='auction');
+    const first=peers[0].state.turn;
+    at(first).action('bid',{action:'igra'});
+    await until(()=>peers[0].state.auction?.igraPlayers.length===1);
+    const second=peers[0].state.turn;
+    at(second).action('bid',{action:'igra'});
+    await until(()=>peers[0].state.auction?.igraPlayers.length===2);
+    assert.deepEqual(peers[0].state.auction.igraPlayers,[first,second]);
+    const third=peers[0].state.turn;
+    at(third).action('bid',{action:'pass'});
+    await until(()=>peers.every(p=>p.state?.phase==='igraReveal'));
+    assert.equal(peers[0].state.turn,first);
+    assert.equal(at(first).state.hands.length,10);
+    at(first).action('igraDeclare',{value:3}); // Karo
+    await until(()=>peers[0].state.auction?.igraDeclarations.length===1);
+    assert.equal(peers[0].state.turn,second);
+    at(second).action('igraDeclare',{value:5}); // Tref, directly (no steps).
+    await until(()=>peers.every(p=>p.state?.phase==='following'));
+    assert.equal(peers[0].state.contract.declarer,second);
+    assert.equal(peers[0].state.contract.value,5);
+    assert.equal(peers[0].state.contract.hand,true);
+    assert.ok(peers.every(p=>p.state.hands.length===10),'Igra skips the talon');
+    assert.ok(peers.every(p=>p.errors.length===0),'no client errors');
+  }finally{
+    peers.forEach(p=>{try{p.close();}catch{}});
+    proc.kill('SIGTERM');
+  }
+});
