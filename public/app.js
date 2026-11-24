@@ -405,7 +405,7 @@
   }
   function gameScreen() {
     const subtitle=state.seat===null?'Watching · waiting to play':state.turn===null?'Waiting for the next step':`${nameOf(state.turn)}${state.turn===state.seat?' (you)':''} to act`;
-    return `<div class="app">${header()}<div class="layout"><main class="main-col"><section class="panel">
+    return `<div class="app">${header()}<div class="layout"><main class="main-col"><section class="panel game-stage" data-phase="${esc(state.phase)}">
       <div class="stage-header"><div><span class="eyebrow">Round ${state.round} · Dealer: ${esc(nameOf(state.dealer))}</span><h2>${phaseTitle[state.phase]}</h2><p>${esc(subtitle)}</p></div><span class="phase-tag">${state.contract?contractName(state.contract.value,state.contract.hand):'Bidding'}</span></div>
       ${table()}${hand()}${actionPanel()}</section>
       ${state.lastTrick?`<div class="last-trick"><small>Last trick · ${esc(nameOf(state.lastTrick.winner))} won:</small>${state.lastTrick.cards.map(p=>cardHtml(p.card)).join('')}</div>`:''}
