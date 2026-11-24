@@ -97,3 +97,55 @@ test('round result buttons and voting show above reports on mobile',()=>{
   assert.match(css,/\.game-stage\[data-phase="summary"\]>\.actions>\.settlement-offer\{order:-2\}/);
   assert.match(css,/\.game-stage\[data-phase="summary"\]>\.actions>\.result-summary\{order:1;/);
 });
+
+test('auction badges display each player\'s most recent public bid or pass by their seat',()=>{
+  const start=app.indexOf('  function auctionChoiceFor(');
+  const end=app.indexOf('  function playerPlace(',start);
+  assert.ok(start>0&&end>start,'auction label helper exists');
+  const names=['Pik','Karo','Herc','Tref','Betl','Sans'];
+  const contractName=value=>names[value-2]||'?';
+  const fn=new Function('contractName',app.slice(start,end)+';return auctionChoiceFor;')(contractName);
+  const g={phase:'auction',auction:{history:[
+    {seat:1,action:'bid',value:2},
+    {seat:2,action:'igra',value:null},
+    {seat:0,action:'pass',value:null}
+  ]}};
+  assert.deepEqual(fn(g,1),{label:'Pik',kind:'bid'});
+  assert.deepEqual(fn(g,2),{label:'Igra',kind:'igra'});
+  assert.deepEqual(fn(g,0),{label:'Dalje',kind:'pass'});
+  g.auction.history.push({seat:1,action:'bid',value:3});
+  assert.deepEqual(fn(g,1),{label:'Karo',kind:'bid'},'last bid is shown');
+  g.auction.history.push({seat:0,action:'hand',value:6});
+  assert.deepEqual(fn(g,0),{label:'Igra Betl',kind:'igra'});
+  g.phase='igraReveal';
+  g.auction.igraDeclarations=[{seat:2,value:5}];
+  assert.deepEqual(fn(g,2),{label:'Igra Tref',kind:'igra'});
+  g.auction.igraDeclarations=[{seat:2,value:null,weaker:true}];
+  assert.deepEqual(fn(g,2),{label:'Moja je manja',kind:'weaker'});
+  g.phase='playing';
+  assert.equal(fn(g,2),null,'old bid badges disappear outside auction phases');
+  assert.match(app,/class="auction-choice/);
+  assert.match(css,/\\.seat \\.auction-choice\\{/);
+});
+test('each new trick card drops once, without replaying on normal state updates',()=>{
+  const start=app.indexOf('  function freshPlayedCard(');
+  const end=app.indexOf("  socket.on('state',g=>",start);
+  assert.ok(start>0&&end>start,'animation tracking helper exists');
+  const fresh=new Function(app.slice(start,end)+';return freshPlayedCard;')();
+  const first={seat:0,card:'S7'};
+  const second={seat:1,card:'S8'};
+  const previous={round:2,phase:'playing',trick:[first]};
+  const next={round:2,phase:'playing',trick:[first,second]};
+  assert.deepEqual(fresh(previous,next),second);
+  assert.equal(fresh(next,next),null,'do not animate a card again on a repeat update');
+  assert.equal(fresh(null,next),null,'reconnecting must not animate every card');
+  assert.equal(fresh({...previous,round:1},next),null,'changing rounds must not trigger animation');
+  assert.equal(fresh({...previous,trick:[second]},next),null,'replaced trick is not a new card');
+  assert.deepEqual(fresh(previous,{...next,phase:'summary'}),second,
+    'last played Betl card also animates before the immediate summary');
+  assert.match(app,/render\\(newlyPlayed\\);/);
+  assert.match(app,/incoming\\?' incoming':''/);
+  assert.match(css,/\\.played\\.incoming \\.playing-card\\{/);
+  assert.match(css,/@keyframes card-drop-on-felt\\{/);
+  assert.match(css,/@media\\(prefers-reduced-motion:reduce\\)\\{[\\s\\S]*?\\.played\\.incoming \\.playing-card\\{animation:none;/);
+});
