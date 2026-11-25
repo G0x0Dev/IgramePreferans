@@ -191,7 +191,7 @@ export function auctionAction(g,seat,action,value=null){
         const eligible=[0,1,2].filter(i=>!a.passed[i]);
         a.priority=rotationFrom(next(seat),eligible);
       }
-      log(g,player+': Dalje (pass).');break;
+      log(g,player+': Dalje.');break;
     case 'bid':
       assert(!a.hand,'Only Igra Betl or Igra Sans can overbid a declared Igra.');
       assert(isInt(value)&&value>=2&&value<=7,'Bid must be between 2 and 7.');
@@ -202,10 +202,10 @@ export function auctionAction(g,seat,action,value=null){
       a.bid=value;a.highSeat=seat;
       log(g,player+': '+value+' ('+contractName(value)+').');break;
     case 'mogu':
-      assert(!a.hand&&a.highSeat!==null&&a.highSeat!==seat,'Mogu is unavailable.');
-      assert(seat===a.priority,'Only the player with priority can say Mogu.');
+      assert(!a.hand&&a.highSeat!==null&&a.highSeat!==seat,'Moje is unavailable.');
+      assert(seat===a.priority,'Only the player with priority can say Moje.');
       a.highSeat=seat;
-      log(g,player+': Mogu '+a.bid+'.');break;
+      log(g,player+': Moje '+a.bid+'.');break;
     case 'igra':
       assert(a.history.length<3,'Igra may only be declared in the first bidding round.');
       assert(!a.hand||a.handMode==='suit','Only Igra Sans can overbid Igra Betl or Igra Sans.');
