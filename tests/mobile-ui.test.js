@@ -98,7 +98,7 @@ test('round result buttons and voting show above reports on mobile',()=>{
   assert.match(css,/\.game-stage\[data-phase="summary"\]>\.actions>\.result-summary\{order:1;/);
 });
 
-test('auction badges display each player\'s most recent public bid or pass by their seat',()=>{
+test('table badges show each player’s highest bid, or Dalje if they only passed',()=>{
   const start=app.indexOf('  function auctionChoiceFor(');
   const end=app.indexOf('  function playerPlace(',start);
   assert.ok(start>0&&end>start,'auction label helper exists');
@@ -114,7 +114,7 @@ test('auction badges display each player\'s most recent public bid or pass by th
   assert.deepEqual(fn(g,2),{label:'Igra',kind:'igra'});
   assert.deepEqual(fn(g,0),{label:'Dalje',kind:'pass'});
   g.auction.history.push({seat:1,action:'bid',value:3});
-  assert.deepEqual(fn(g,1),{label:'Karo',kind:'bid'},'last bid is shown');
+  assert.deepEqual(fn(g,1),{label:'Karo',kind:'bid'},'highest bid is shown');
   g.auction.history.push({seat:0,action:'hand',value:6});
   assert.deepEqual(fn(g,0),{label:'Igra Betl',kind:'igra'});
   g.phase='igraReveal';
@@ -126,13 +126,33 @@ test('auction badges display each player\'s most recent public bid or pass by th
   assert.deepEqual(fn(g,2),{label:'Moja je manja',kind:'weaker'},
     'bidding result stays beside the player through card play');
   g.auction.history.push({seat:1,action:'pass',value:null});
-  assert.deepEqual(fn(g,1),{label:'Karo · Dalje',kind:'pass'},
-    'a later pass does not erase the earlier suit bid');
+  assert.deepEqual(fn(g,1),{label:'Karo',kind:'bid'},
+    'a later pass does not replace the highest bid');
   assert.deepEqual(fn(g,0),{label:'Igra Betl',kind:'igra'});
   g.phase='summary';
-  assert.deepEqual(fn(g,1),{label:'Karo · Dalje',kind:'pass'},
-    'bidding result stays visible until the next round starts');
+  assert.deepEqual(fn(g,1),{label:'Karo',kind:'bid'},
+    'highest bid stays visible until the next round starts');
   assert.equal(fn({phase:'auction',auction:null},1),null);
+  const none={phase:'auction',auction:{history:[{seat:0,action:'bid',value:2}]}};
+  assert.equal(fn(none,2),null,'do not falsely mark an unacted player as Dalje');
+  none.auction.history.push({seat:2,action:'pass',value:null});
+  assert.deepEqual(fn(none,2),{label:'Dalje',kind:'pass'});
+  const moje={phase:'auction',auction:{history:[
+    {seat:0,action:'bid',value:2},
+    {seat:1,action:'mogu',value:null},
+    {seat:0,action:'bid',value:3},
+    {seat:1,action:'pass',value:null}
+  ]}};
+  assert.deepEqual(fn(moje,1),{label:'Pik',kind:'bid'},
+    'Moje keeps the contract value at the moment it was claimed');
+  moje.auction.history.push({seat:2,action:'hand',value:6});
+  assert.deepEqual(fn(moje,2),{label:'Igra Betl',kind:'igra'});
+  const peak={phase:'auction',auction:{history:[
+    {seat:0,action:'bid',value:2},{seat:0,action:'bid',value:3},
+    {seat:0,action:'bid',value:4},{seat:0,action:'pass',value:null}
+  ]}};
+  assert.deepEqual(fn(peak,0),{label:'Herc',kind:'bid'},
+    'show the strongest ordinary contract even after Dalje');
   assert.ok(app.includes('class="auction-choice'),'seat badges are rendered');
   assert.ok(css.includes('.seat .auction-choice{'),'seat badges have table styling');
 });
@@ -190,4 +210,11 @@ test('defensive actions have no Will you defend heading; Imam želju is a Ne cho
   assert.match(app,/case 'followWish':send\('follow',\{choice:'imam-zelju'\}\)/);
   assert.match(css,/\.game-stage\[data-phase="following"\] \.actions \.action-row\{/);
   assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+});
+
+test('Mogu is displayed as Moje; passing displays only Dalje',()=>{
+  assert.match(app,/button\('Moje '\+a\.bid,'mogu',\{variant:'active'\}\)/,
+    'existing priority action is relabeled, not changed mechanically');
+  assert.match(app,/button\('Dalje','pass',\{variant:'pass-action'\}\)/);
+  assert.doesNotMatch(app,/Dalje · Pass|button\('Mogu '/);
 });
