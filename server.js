@@ -2,10 +2,12 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { randomBytes, createHash } from 'node:crypto';
+import { connectScoreStore } from './score-store.js';
+import { requireScoreAdmin,checkResetAllowed } from './score-admin.js';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { createGame,deal,auctionAction,igraDeclare,takeTalon,discard,declare,follow,callPartner,doubleAction,playCard,advanceTrick,viewFor,finalScores,settleMatch } from './game.js';
-import { loadHistory,saveHistory,mergeHistory,leaderboard } from './history.js';
+import { mergeHistory,leaderboard,normalizeRecord,MAX_HISTORY } from './history.js';
 import { botMove } from './bot.js';
 
 const publicDir=join(dirname(fileURLToPath(import.meta.url)),'public');
@@ -16,12 +18,19 @@ const mime={'index.html':'text/html; charset=utf-8','app.js':'application/javasc
 const clients=new Map();
 const ROOM_CODE='FRIENDS';
 const FRIEND_LIMIT=5;
-const sharedRoom={code:ROOM_CODE,game:createGame(),members:[],nextMemberId:1,updated:Date.now(),timer:null,archiveTimer:null,history:loadHistory(),undoCandidate:null,undoRequest:null,settlementRequest:null,matchId:null,solo:false};
+const sharedRoom={code:ROOM_CODE,game:createGame(),members:[],nextMemberId:1,updated:Date.now(),timer:null,archiveTimer:null,history:[],historyEpoch:null,archivingIds:new Set(),undoCandidate:null,undoRequest:null,settlementRequest:null,matchId:null,solo:false};
 const soloRooms=new Map();
 const SOLO_LIMIT=30;
-const MAX_MESSAGE=128_000; // allows restoring a full bounded JSON score archive
+const MAX_MESSAGE=128_000; // bounded backup import and latest score rows
 const GUID='258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 let socketCounter=0;
+let scoreStore=null;
+let scoreQueue=Promise.resolve();
+function queueScoreWrite(operation){
+  const task=scoreQueue.then(operation);
+  scoreQueue=task.catch(()=>{});
+  return task;
+}
 const nameValid=v=>typeof v==='string'&&v.trim().length>=1&&v.trim().length<=24;
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
@@ -58,7 +67,7 @@ function reply(client,id,data){
 }
 function sendState(room){
   room.updated=Date.now();
-  if(room.game.finished && !room.archiveTimer && !room.undoRequest && room.matchId && !room.history.some(h=>h.id===room.matchId))scheduleArchive(room);
+  if(room.game.finished && !room.archiveTimer && !room.undoRequest && room.matchId && !room.history.some(h=>h.id===room.matchId) && !room.archivingIds?.has(room.matchId))scheduleArchive(room);
   const members=room.members.map(m=>({id:m.id,name:m.name,online:m.online,seat:m.seat}));
   for(const member of room.members){
     const view=viewFor(room.game,member.seat,room.code);
@@ -67,7 +76,8 @@ function sendState(room){
     view.myName=member.name;
     view.friendLimit=FRIEND_LIMIT;
     view.mode=room.solo?'solo':'friends';
-    view.history=room.solo?[]:room.history;
+    view.history=room.solo?[]:room.history.slice(0,MAX_HISTORY);
+    view.historyEpoch=room.solo?null:room.historyEpoch;
     view.leaderboard=room.solo?[]:leaderboard(room.history);
     view.undoRequest=room.undoRequest ? {seat:room.undoRequest.seat,card:room.undoRequest.card,approvals:room.undoRequest.approvals} : null;
     view.settlementRequest=room.settlementRequest
@@ -143,14 +153,29 @@ function clearArchiveTimer(room){
 }
 function recordFinished(room){
   if(room.solo)return;
-  if(!room.game.finished || !room.matchId || room.history.some(h=>h.id===room.matchId))return;
+  if(!room.game.finished || !room.matchId || room.history.some(h=>h.id===room.matchId) ||
+     room.archivingIds.has(room.matchId))return;
   const record={
     id:room.matchId,at:new Date().toISOString(),rounds:room.game.round,
     players:room.game.players.map((p,i)=>({name:p.name,score:finalScores(room.game)[i]}))
   };
-  room.history=mergeHistory(room.history,[record]);
-  saveHistory(room.history);
-  sendState(room);
+  room.archivingIds.add(record.id);
+  // Serialize all saves, imports and wipes. A reset always runs after any
+  // already-in-flight match save, so an old match cannot reappear afterwards.
+  void queueScoreWrite(async()=>{
+    await scoreStore.add(record);
+    room.history=mergeHistory(room.history,[record]);
+    sendState(room);
+  }).catch(e=>{
+    console.error('Could not archive completed match:',e.message);
+    if(room.matchId===record.id){
+      clearArchiveTimer(room);
+      room.archiveTimer=setTimeout(()=>{
+        room.archiveTimer=null;recordFinished(room);
+      },15_000);
+      room.archiveTimer.unref?.();
+    }
+  }).finally(()=>room.archivingIds.delete(record.id));
 }
 function scheduleArchive(room){
   if(room.solo)return;
@@ -315,6 +340,48 @@ function handleSettlement(client,event,data,id){
     sendState(room);
   }catch(e){reply(client,id,{ok:false,error:e.message});send(client,'actionError',e.message);}
 }
+async function handleScoreAdministration(client,event,data,id){
+  try{
+    const {room}=session(client);
+    if(room!==sharedRoom || room.solo)throw new Error('Score administration is only available in the friends room.');
+    if(client.adminBlockedUntil && Date.now()<client.adminBlockedUntil)
+      throw new Error('Too many incorrect passwords. Try again in one minute.');
+    try{
+      requireScoreAdmin(data.adminSecret,process.env.ADMIN_RESET_SECRET);
+      client.adminFailures=0;
+    }catch(e){
+      client.adminFailures=(client.adminFailures||0)+1;
+      if(client.adminFailures>=5){client.adminBlockedUntil=Date.now()+60_000;client.adminFailures=0;}
+      throw e;
+    }
+    if(event==='restoreHistory'){
+      if(!Array.isArray(data.records)||data.records.length>MAX_HISTORY)
+        throw new Error('Backup must contain at most 200 games per import.');
+      const records=data.records.map(normalizeRecord);
+      if(records.some(r=>!r))throw new Error('Backup contains an invalid score record.');
+      await queueScoreWrite(async()=>{
+        await scoreStore.importRecords(records);
+        const snapshot=await scoreStore.load();
+        room.history=snapshot.history;room.historyEpoch=snapshot.epoch;
+      });
+      reply(client,id,{ok:true,count:room.history.length});
+    }else{
+      checkResetAllowed(room.game,data.confirmation);
+      clearArchiveTimer(room);
+      await queueScoreWrite(async()=>{
+        const epoch=await scoreStore.reset();
+        room.history=[];room.historyEpoch=epoch;
+        // A finished match must not be re-archived after wiping its results.
+        if(room.game.finished)room.matchId=null;
+      });
+      reply(client,id,{ok:true});
+    }
+    sendState(room);
+  }catch(e){
+    console.error('Score administration failed:',event,e.message);
+    reply(client,id,{ok:false,error:e.message});
+  }
+}
 function handleMessage(client,message){
   if(!message||typeof message!=='object'||typeof message.event!=='string')return;
   const {event,data={},id}=message;
@@ -378,15 +445,9 @@ function handleMessage(client,message){
   if(event==='requestUndo'||event==='voteUndo'){
     handleUndo(client,event,data,id);return;
   }
-  if(event==='restoreHistory'){
-    try{
-      const {seat}=session(client);
-      if(seat===null)throw Error('Only a seated friend can restore score backups.');
-      if(!Array.isArray(data.records)||data.records.length>200)throw Error('The backup must be a list of up to 200 games.');
-      room.history=mergeHistory(room.history,data.records);
-      saveHistory(room.history);
-      reply(client,id,{ok:true,count:room.history.length});sendState(room);
-    }catch(e){reply(client,id,{ok:false,error:e.message});}return;
+  if(event==='restoreHistory'||event==='resetScores'){
+    void handleScoreAdministration(client,event,data,id);
+    return;
   }
   if(event==='restartSolo'){
     try{
@@ -511,4 +572,15 @@ setInterval(()=>{
   for(const client of clients.values())if(!client.closed&&client.socket.writable)client.socket.write(frame(Buffer.alloc(0),9));
 },25_000).unref();
 const port=Number(process.env.PORT||3000);
-server.listen(port,'0.0.0.0',()=>console.log(`Preferans online at http://localhost:${port}`));
+connectScoreStore().then(async store=>{
+  scoreStore=store;
+  const snapshot=await store.load();
+  sharedRoom.history=snapshot.history;
+  sharedRoom.historyEpoch=snapshot.epoch;
+  console.log('Score archive ready:',store.kind);
+  server.listen(port,'0.0.0.0',()=>console.log(`Preferans online at http://localhost:${port}`));
+}).catch(e=>{
+  // Never run with an empty in-memory archive if a configured DB fails.
+  console.error('Cannot initialize score archive:',e.message);
+  process.exitCode=1;
+});
