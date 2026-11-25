@@ -4,10 +4,11 @@ Play Preferans in a browser with one shared table for up to five friends (three 
 
 ## Start on your computer
 
-1. Install [Node.js 22+](https://nodejs.org/). **No `npm install` or database is needed.**
+1. Install [Node.js 22+](https://nodejs.org/). Run `npm install` first. The database is optional for local development; without `DATABASE_URL`, results still use a local JSON file.
 2. Open a terminal inside this folder and run:
 
    ```bash
+   npm install
    npm start
    ```
 
@@ -24,14 +25,27 @@ To play over the public internet, deploy the app as described below; `localhost`
 1. Upload this entire folder to a new **GitHub repository**. Keep `render.yaml` at the root.
 2. In [Render](https://dashboard.render.com/), choose **New → Blueprint**, select that GitHub repository, and approve the web service. Alternatively, choose **New → Web Service**, connect the repository, and set:
    - Runtime: **Node**
-   - Build: `npm install` (there are no dependencies)
+   - Build: `npm install`
    - Start: `npm start`
    - Health check: `/health`
 3. Render will give you a public HTTPS website such as `https://your-app.onrender.com`. **This is your playable online game URL.** Open it and share its single website link with your group of five.
 
-This project also works on other single-instance Node hosts (Railway, Fly.io, a VPS). The host must support **WebSocket upgrades**, long-lived connections, and the `PORT` environment variable. HTTPS deployments automatically use secure `wss://` WebSockets. No API keys are needed.
+This project also works on other single-instance Node hosts (Railway, Fly.io, a VPS). The host must support **WebSocket upgrades**, long-lived connections, and the `PORT` environment variable. HTTPS deployments automatically use secure `wss://` WebSockets. No public API keys are needed. The database connection and admin secret belong in private server environment variables.
 
-**Hosting limitations:** The current match and five-friend roster live in server memory; restart or Render sleep resets the live game and roster. **Finished-match history is saved to `preferans-results.json` (or `HISTORY_FILE` / `DATA_DIR`)**, but **Render Free uses an ephemeral filesystem**, so history files may disappear on redeploy or restart. The website keeps a copy of saved match records in each connected browser and can restore them when server history is empty; friends can also use **Download results backup** and **Restore backup**. Download the JSON backup regularly, and for guaranteed multi-device durability, deploy a durable database or persistent disk. Restored score records are accepted from seated friends; use this with people you trust. Use a single Render instance; horizontal scaling is not supported.
+### Permanent score history with Neon PostgreSQL
+
+1. In Neon, create a PostgreSQL project and copy its connection string from **Connect**. Rotate the database password if the string has ever been posted/shared.
+2. In Render → **preferans-online** → **Environment**, add the secrets below, then choose **Save only** until ready to deploy:
+   - `DATABASE_URL`: full Neon connection string, including the password and `sslmode=require`.
+   - `ADMIN_RESET_SECRET`: a unique strong administrator password, **at least 16 characters**.
+3. Merge and deploy the database-feature pull request. On startup, the backend automatically creates the `preferans_score_matches` and `preferans_score_meta` tables. A configured database that cannot connect **prevents the server from starting** rather than silently losing scores.
+4. New finished games automatically save to PostgreSQL. All completed games remain in the database; the site sends only the 200 newest games to browsers. Cumulative standings use the complete archive.
+5. To migrate old matches, **before redeploying, download a results backup** in the existing game. After deployment, open the score section, select **Restore backup**, and enter `ADMIN_RESET_SECRET`. Imports accept up to 200 records at a time; backups are deduplicated by game ID.
+6. To delete every saved result, open scores in the lobby or after a finished match and select **Reset all scores**. Enter the admin password and type **RESET ALL SCORES**. This wipes historical match records, wins and totals for everyone, invalidates old browser score caches, and cannot be undone without an intentionally imported backup. **The currently active game is not erased**; resets are refused during unfinished matches.
+
+**Security:** Never commit `DATABASE_URL` or `ADMIN_RESET_SECRET` to GitHub or paste them into messages. Both are stored only in Render's server-side secret configuration. Backup import also requires the admin secret; old browser copies no longer auto-restore deleted scores. Downloaded backups remain user-managed files.
+
+**Hosting limitations:** The current game, current-match scoring and five-friend roster still live in server memory; Render restarts/sleep interrupt an unfinished match. **Only finished-match scores and leaderboards are durable in PostgreSQL.** When `DATABASE_URL` is absent, a local development instance continues to use `preferans-results.json` (which is not durable on Render Free). Use one Render instance; horizontal scaling of the live game is not supported.
 
 ## Solo practice against computer players
 
@@ -95,6 +109,8 @@ preferans-online/
 │   └── styles.css    # Responsive card table
 ├── game.js           # Authoritative rules, trick play, bidding, scores
 ├── server.js         # HTTP + native WebSocket server / one shared room
+├── score-store.js    # PostgreSQL score archive (local JSON fallback)
+├── score-admin.js    # Admin authentication and reset safety
 ├── tests/            # Node tests + real three-client integration
 ├── render.yaml       # Render deployment blueprint
 └── package.json

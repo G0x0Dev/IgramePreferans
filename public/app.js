@@ -54,7 +54,7 @@
   const SOLO_KEY='pref3:solo';
   const MODE_KEY='pref3:lastMode';
   const HISTORY_KEY='pref3:matchHistory';
-  let historyRestoreTried=false;
+  const HISTORY_EPOCH_KEY='pref3:matchHistoryEpoch';
   function rememberSession(data,mode='friends') {
     session={token:data.token,mode};
     localStorage.setItem(mode==='solo'?SOLO_KEY:SESSION_KEY,JSON.stringify(session));
@@ -113,12 +113,15 @@
   socket.on('state',g=>{
     const newlyPlayed=freshPlayedCard(state,g);
     state=g;selected=selected.filter(c=>g.hands.includes(c));
-    if(g.mode!=='solo'&&g.history?.length){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(g.history));}catch{}}
-    else if(g.mode!=='solo'&&g.seat!==null && !historyRestoreTried){
-      historyRestoreTried=true;
+    if(g.mode!=='solo'){
       try{
-        const saved=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');
-        if(Array.isArray(saved)&&saved.length)socket.emit('restoreHistory',{records:saved},a=>{if(!a?.ok)toast('Could not restore saved scores.');});
+        const savedEpoch=localStorage.getItem(HISTORY_EPOCH_KEY);
+        if(savedEpoch&&savedEpoch!==g.historyEpoch)localStorage.removeItem(HISTORY_KEY);
+        if(g.historyEpoch)localStorage.setItem(HISTORY_EPOCH_KEY,g.historyEpoch);
+        // Browser copy is only a downloadable convenience backup. It never
+        // uploads scores automatically; an administrator must import a file.
+        if(g.history?.length)localStorage.setItem(HISTORY_KEY,JSON.stringify(g.history));
+        else localStorage.removeItem(HISTORY_KEY);
       }catch{}
     }
     render(newlyPlayed);
@@ -195,7 +198,8 @@
       ${rows.map(p=>`<tr class="${p.position===1?'leader-row':''}"><td>#${p.position}</td><td>${esc(p.name)}</td><td>${p.games}</td><td>${p.wins}</td><td class="number">${p.total}</td></tr>`).join('')}</tbody></table>`
       :'<p class="muted-note">No finished matches yet. Scores are added after a match ends.</p>'}
       
-      <div class="action-row">${button('Download results backup','exportHistory',{variant:'small'})}${state.seat===null?'':button('Restore backup','importHistory',{variant:'small subtle'})}</div>
+      <div class="action-row">${button('Download results backup','exportHistory',{variant:'small'})}${state.seat===null?'':button('Restore backup','importHistory',{variant:'small subtle'})}
+      ${state.seat!==null&&(state.phase==='lobby'||(state.phase==='summary'&&state.finished))?button('Reset all scores','resetScores',{variant:'small warn'}):''}</div>
       <h4 class="history-title">Finished games (${games.length})</h4>
       ${games.length?`<div class="history-list">${games.slice(0,12).map((m,i)=>`<div class="history-match"><strong>Game ${games.length-i} · ${esc(new Date(m.at).toLocaleDateString())}</strong><small>${esc(m.players.map(p=>p.name+': '+p.score).join(' · '))}</small></div>`).join('')}</div>`:
       '<p class="muted-note">No finished games</p>'}
@@ -524,15 +528,34 @@
         return;
       }
       case 'importHistory':{
+        const adminSecret=window.prompt('Administrator password required to import results:');
+        if(!adminSecret)return;
+        if(!confirm('Import this saved backup into the current leaderboard?'))return;
         const file=document.createElement('input');file.type='file';file.accept='.json,application/json';
         file.onchange=async()=>{
           try{
+            if(!file.files?.[0])return;
             const data=JSON.parse(await file.files[0].text()),records=Array.isArray(data)?data:data.records;
-            if(!Array.isArray(records)||records.length>200)throw Error('This backup is invalid or has too many games.');
-            socket.emit('restoreHistory',{records},answer=>{if(!answer?.ok)toast(answer?.error||'Backup could not be restored.');else toast('Saved games restored.');});
+            if(!Array.isArray(records)||records.length>200)throw Error('Backup must contain at most 200 games.');
+            socket.emit('restoreHistory',{records,adminSecret},answer=>{
+              if(!answer?.ok)toast(answer?.error||'Backup could not be restored.');
+              else toast('Score records imported.');
+            });
           }catch(e){toast(e.message||'Invalid backup file.');}
         };
         file.click();return;
+      }
+      case 'resetScores':{
+        const adminSecret=window.prompt('Administrator password to PERMANENTLY delete all saved match scores:');
+        if(!adminSecret)return;
+        const confirmation=window.prompt('This deletes all saved match history, totals and wins. Type RESET ALL SCORES to confirm:');
+        if(confirmation!=='RESET ALL SCORES'){toast('Reset cancelled.');return;}
+        socket.emit('resetScores',{adminSecret,confirmation},answer=>{
+          if(!answer?.ok){toast(answer?.error||'Could not reset scores.');return;}
+          try{localStorage.removeItem(HISTORY_KEY);}catch{}
+          toast('Saved scores and leaderboard were cleared.');
+        });
+        return;
       }
       case 'start':send('start');return;
       case 'nextRound':selected=[];send('nextRound');return;

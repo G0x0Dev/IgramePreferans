@@ -150,3 +150,19 @@ test('each new trick card drops once, without replaying on normal state updates'
   assert.ok(css.includes('.played.incoming .playing-card{animation:none;'),
     'reduced-motion users should not receive card animations');
 });
+
+test('score controls include protected reset and manual-only backup restore',()=>{
+  assert.match(app,/button\('Reset all scores','resetScores'/);
+  assert.match(app,/case 'resetScores':\{/);
+  assert.match(app,/RESET ALL SCORES/);
+  assert.match(app,/socket\.emit\('resetScores',\{adminSecret,confirmation\}/);
+  assert.match(app,/case 'importHistory':\{/);
+  assert.match(app,/socket\.emit\('restoreHistory',\{records,adminSecret\}/);
+  assert.doesNotMatch(app,/historyRestoreTried/);
+  assert.doesNotMatch(app,/if\(Array\.isArray\(saved\)&&saved\.length\)socket\.emit\('restoreHistory'/,
+    'an empty archive must never refill itself from old browser copies');
+  assert.match(app,/savedEpoch&&savedEpoch!==g\.historyEpoch/);
+  assert.match(app,/localStorage\.removeItem\(HISTORY_KEY\)/);
+  assert.doesNotMatch(app,/localStorage\.setItem\('ADMIN_RESET_SECRET'/,
+    'administrator password must not be stored in a browser');
+});
