@@ -123,7 +123,16 @@ test('auction badges display each player\'s most recent public bid or pass by th
   g.auction.igraDeclarations=[{seat:2,value:null,weaker:true}];
   assert.deepEqual(fn(g,2),{label:'Moja je manja',kind:'weaker'});
   g.phase='playing';
-  assert.equal(fn(g,2),null,'old bid badges disappear outside auction phases');
+  assert.deepEqual(fn(g,2),{label:'Moja je manja',kind:'weaker'},
+    'bidding result stays beside the player through card play');
+  g.auction.history.push({seat:1,action:'pass',value:null});
+  assert.deepEqual(fn(g,1),{label:'Karo · Dalje',kind:'pass'},
+    'a later pass does not erase the earlier suit bid');
+  assert.deepEqual(fn(g,0),{label:'Igra Betl',kind:'igra'});
+  g.phase='summary';
+  assert.deepEqual(fn(g,1),{label:'Karo · Dalje',kind:'pass'},
+    'bidding result stays visible until the next round starts');
+  assert.equal(fn({phase:'auction',auction:null},1),null);
   assert.ok(app.includes('class="auction-choice'),'seat badges are rendered');
   assert.ok(css.includes('.seat .auction-choice{'),'seat badges have table styling');
 });
@@ -165,4 +174,20 @@ test('score controls include protected reset and manual-only backup restore',()=
   assert.match(app,/localStorage\.removeItem\(HISTORY_KEY\)/);
   assert.doesNotMatch(app,/localStorage\.setItem\('ADMIN_RESET_SECRET'/,
     'administrator password must not be stored in a browser');
+});
+
+test('Karo diamond symbol sits above the bid label on all screen sizes',()=>{
+  assert.match(app,/button\(next\.n,'bid',\{value:next\.v,extra:icon\(next\),variant:'suit-bid'\}\)/);
+  assert.match(app,/allowed\.map\(c=>button\(c\.n,'igraDeclare',\{value:c\.v,extra:icon\(c\),variant:'suit-bid'\}\)\)/);
+  assert.ok(app.includes("D:'♦'"),'Diamonds use the real diamond glyph');
+  assert.match(css,/\.button\.suit-bid\{[\s\S]*?flex-direction:column;/);
+  assert.match(css,/\.button\.suit-bid \.suit-symbol\{[\s\S]*?display:block;/);
+  assert.match(css,/\.game-stage\.has-mobile-dock \.auction-bid-line \.button\.suit-bid\{/);
+});
+test('defensive actions have no Will you defend heading; Imam želju is a Ne choice',()=>{
+  assert.doesNotMatch(app,/Will you defend\?/);
+  assert.match(app,/button\('Imam želju','followWish'\)/);
+  assert.match(app,/case 'followWish':send\('follow',\{choice:'imam-zelju'\}\)/);
+  assert.match(css,/\.game-stage\[data-phase="following"\] \.actions \.action-row\{/);
+  assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 });
