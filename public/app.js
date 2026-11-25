@@ -265,34 +265,40 @@
       <div class="lobby-foot">${isHost?button('Start match · Deal the cards','start',{variant:'primary large',disabled:!canStart}):'<p class="text-muted">You are waiting. Take an open seat to play, or watch when the match begins.</p>'}</div>
       ${matchHistory()}</main></div>`;
   }
-  // Auction decisions are public. Display each player's latest choice beside
-  // their table seat, including Pass, Igra and suit declarations.
+  // Auction decisions are public. Display each player's highest choice beside
+  // their table seat, including Dalje, Igra and suit declarations.
   function auctionChoiceFor(g,seat) {
     if(!g.auction)return null;
     const a=g.auction;
-    // Keep every player's real auction result beside their seat for the
-    // whole hand, including the talon, defense and trick-taking stages.
+    // Keep each player's HIGHEST bid on the felt even after they say Dalje.
+    // "Moje" claims the current contract without raising it, so its value
+    // comes from the earlier public bid history, not the later overall bid.
+    let currentValue=1,highestValue=0,highest=null,passed=false;
+    for(const choice of a.history||[]){
+      if((choice.action==='bid'||choice.action==='hand')&&
+         Number.isInteger(choice.value))currentValue=choice.value;
+      if(choice.seat!==seat)continue;
+      if(choice.action==='pass'){passed=true;continue;}
+      if(choice.action==='igra'){
+        if(!highest)highest={label:'Igra',kind:'igra'};
+        continue;
+      }
+      const value=choice.action==='mogu'?currentValue:choice.value;
+      if((choice.action==='bid'||choice.action==='hand'||choice.action==='mogu')&&
+         Number.isInteger(value)&&value>highestValue){
+        highestValue=value;
+        highest=choice.action==='hand'
+          ? {label:'Igra '+contractName(value),kind:'igra'}
+          : {label:contractName(value),kind:'bid'};
+      }
+    }
     const declaration=a.igraDeclarations?.find(d=>d.seat===seat);
     if(declaration)return declaration.weaker
       ? {label:'Moja je manja',kind:'weaker'}
       : {label:'Igra '+contractName(declaration.value),kind:'igra'};
-    const choices=a.history?.filter(h=>h.seat===seat)||[];
-    const last=choices.at(-1);
-    if(!last)return null;
-    const describe=h=>{
-      switch(h.action){
-        case 'bid':return {label:contractName(h.value),kind:'bid'};
-        case 'igra':return {label:'Igra',kind:'igra'};
-        case 'hand':return {label:'Igra '+contractName(h.value),kind:'igra'};
-        case 'mogu':return {label:'Mogu',kind:'bid'};
-        default:return null;
-      }
-    };
-    if(last.action==='pass'){
-      const prior=choices.slice(0,-1).reverse().map(describe).find(Boolean);
-      return {label:prior?prior.label+' · Dalje':'Dalje',kind:'pass'};
-    }
-    return describe(last);
+    if(highest)return highest;
+    // No bid at all: show Dalje only after the player actually passes.
+    return passed?{label:'Dalje',kind:'pass'}:null;
   }
   function playerPlace(i,pos) {
     const p=state.players[i],turn=state.turn===i, me=i===state.seat;
@@ -368,8 +374,8 @@
           'Ordinary bids advance one contract at a time. Igra enters the suit-game auction; Igra Betl and Igra Sans are declared directly.')+'</div>';
         if(choices.length)body+='<div class="group-label">Available bids</div><div class="auction-bid-line" role="group" aria-label="Available bids">'+choices.join('')+'</div>';
         if(!a.hand && a.highSeat!==null && a.highSeat!==s.seat && a.priority===s.seat)
-          body+='<div class="action-row" style="margin-top:9px">'+button('Mogu '+a.bid,'mogu',{variant:'active'})+'</div>';
-        body+='<div class="pass-row">'+button('Dalje · Pass','pass',{variant:'pass-action'})+'</div>';
+          body+='<div class="action-row" style="margin-top:9px">'+button('Moje '+a.bid,'mogu',{variant:'active'})+'</div>';
+        body+='<div class="pass-row">'+button('Dalje','pass',{variant:'pass-action'})+'</div>';
       }
       body='<div class="bid-status">Current: '+esc(highest)+'</div>'+body;
     } else if(s.phase==='igraReveal') {
