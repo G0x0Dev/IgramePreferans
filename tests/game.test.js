@@ -240,7 +240,9 @@ test('priority bidder can match using Mogu',()=>{
   assert.equal(g.turn,1);
   auctionAction(g,1,'mogu');
   assert.equal(g.auction.highSeat,1);
+  assert.match(g.log.at(-1),/Moje 3\./,'priority action is announced as Moje');
   auctionAction(g,2,'pass');
+  assert.match(g.log.at(-1),/Dalje\./,'passing is announced as Dalje without English text');
   assert.equal(g.phase,'talon');
   assert.equal(g.contract.declarer,1);
   assert.equal(g.contract.minimum,3);
