@@ -294,11 +294,11 @@ function beginFollowing(g) {
 }
 export function follow(g,seat,choice) {
   assertTurn(g,seat,'following');
-  // Preserve compatibility with older clients while retaining the precise
-  // spoken response for the three-button interface.
+  // Preserve compatibility with older clients and retain the precise spoken
+  // response. "Imam želju" is another way to decline, just like "Ne".
   const selected = typeof choice === 'boolean' ? (choice ? 'dodjem' : 'ne') : choice;
-  const options = {dodjem: {follows:true, message:'Dođem'}, ne: {follows:false, message:'Ne'}, 'ne-bi': {follows:false, message:'Ne bi'}};
-  assert(typeof selected === 'string' && Object.hasOwn(options, selected), 'Choose Dođem, Ne, or Ne bi.');
+  const options = {dodjem: {follows:true, message:'Dođem'}, ne: {follows:false, message:'Ne'}, 'ne-bi': {follows:false, message:'Ne bi'}, 'imam-zelju': {follows:false, message:'Imam želju'}};
+  assert(typeof selected === 'string' && Object.hasOwn(options, selected), 'Choose Dođem, Ne, Ne bi, or Imam želju.');
   assert(seat!==g.contract.declarer,'Declarer cannot be a defender.');
   g.follows[seat] = options[selected].follows;
   g.followMessages[seat] = options[selected].message;
