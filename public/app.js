@@ -268,24 +268,31 @@
   // Auction decisions are public. Display each player's latest choice beside
   // their table seat, including Pass, Igra and suit declarations.
   function auctionChoiceFor(g,seat) {
-    if(!g.auction||!['auction','igraReveal'].includes(g.phase))return null;
+    if(!g.auction)return null;
     const a=g.auction;
-    if(g.phase==='igraReveal'){
-      const declaration=a.igraDeclarations?.find(d=>d.seat===seat);
-      if(declaration)return declaration.weaker
-        ? {label:'Moja je manja',kind:'weaker'}
-        : {label:'Igra '+contractName(declaration.value),kind:'igra'};
-    }
-    const last=a.history?.slice().reverse().find(h=>h.seat===seat);
+    // Keep every player's real auction result beside their seat for the
+    // whole hand, including the talon, defense and trick-taking stages.
+    const declaration=a.igraDeclarations?.find(d=>d.seat===seat);
+    if(declaration)return declaration.weaker
+      ? {label:'Moja je manja',kind:'weaker'}
+      : {label:'Igra '+contractName(declaration.value),kind:'igra'};
+    const choices=a.history?.filter(h=>h.seat===seat)||[];
+    const last=choices.at(-1);
     if(!last)return null;
-    switch(last.action){
-      case 'pass':return {label:'Dalje',kind:'pass'};
-      case 'bid':return {label:contractName(last.value),kind:'bid'};
-      case 'igra':return {label:'Igra',kind:'igra'};
-      case 'hand':return {label:'Igra '+contractName(last.value),kind:'igra'};
-      case 'mogu':return {label:'Mogu',kind:'bid'};
-      default:return null;
+    const describe=h=>{
+      switch(h.action){
+        case 'bid':return {label:contractName(h.value),kind:'bid'};
+        case 'igra':return {label:'Igra',kind:'igra'};
+        case 'hand':return {label:'Igra '+contractName(h.value),kind:'igra'};
+        case 'mogu':return {label:'Mogu',kind:'bid'};
+        default:return null;
+      }
+    };
+    if(last.action==='pass'){
+      const prior=choices.slice(0,-1).reverse().map(describe).find(Boolean);
+      return {label:prior?prior.label+' · Dalje':'Dalje',kind:'pass'};
     }
+    return describe(last);
   }
   function playerPlace(i,pos) {
     const p=state.players[i],turn=state.turn===i, me=i===state.seat;
@@ -334,7 +341,7 @@
     return `<section class="my-hand-area"><div class="hand-head"><strong>Your hand · ${state.hands.length} cards</strong></div><div class="hand" aria-label="Your playing cards">${cards||'<div class="empty-hand">No cards left</div>'}</div></section>`;
   }
   function contractButtons(list,action,hand=false) {
-    return `<div class="button-group">${list.map(c=>button(`${hand?'Igra-':''}${c.n}`,action,{value:c.v,extra:icon(c)})).join('')}</div>`;
+    return `<div class="button-group">${list.map(c=>button(`${hand?'Igra-':''}${c.n}`,action,{value:c.v,extra:icon(c),variant:c.s?'suit-bid':''})).join('')}</div>`;
   }
   function actionPanel() {
     if(state.seat===null && state.phase!=='summary')return `<div class="actions"><div class="actions-title">Spectating</div>${undoBanner()}</div>`;
@@ -345,7 +352,7 @@
       const options=s.auctionOptions||{ordinary:null,igra:false,betl:false,sans:false};
       const next=CONTRACTS.find(c=>c.v===options.ordinary);
       const choices=[
-        ...(next?[button(next.n,'bid',{value:next.v,extra:icon(next)})]:[]),
+        ...(next?[button(next.n,'bid',{value:next.v,extra:icon(next),variant:'suit-bid'})]:[]),
         ...(options.igra?[button('Igra','igra',{variant:'primary'})]:[]),
         ...(options.betl?[button('Igra Betl','hand',{value:6,variant:'igra-betl'})]:[]),
         ...(options.sans?[button('Igra Sans','hand',{value:7,variant:'igra-sans'})]:[])
@@ -382,7 +389,7 @@
           return '<span class="igra-claim">'+esc(nameOf(seat))+' · '+esc(answer)+'</span>';
         }).join('')+'</div>'+
         (mine?'<div class="group-label">My Igra is</div><div class="auction-bid-line" role="group" aria-label="Declare suit Igra">'+
-          allowed.map(c=>button(c.n,'igraDeclare',{value:c.v,extra:icon(c)})).join('')+
+          allowed.map(c=>button(c.n,'igraDeclare',{value:c.v,extra:icon(c),variant:'suit-bid'})).join('')+
           (highest>=2?button('Moja je manja · Weaker','igraWeaker',{variant:'subtle'}):'')+'</div>':'');
     } else if(s.phase==='talon') {
       body=`<div class="actions-title">The talon is revealed</div><div class="actions-subtitle">${esc(nameOf(s.contract.declarer))} won at ${s.contract.minimum}. Two cards are shown publicly before being added to the declarer's hand.</div>
@@ -395,8 +402,8 @@
       body=`<div class="actions-title">${mine?'Declare your contract':`${esc(nameOf(s.turn))} is choosing a contract`}</div><div class="actions-subtitle">Choose the game you won in the auction or any stronger one.</div>
       ${mine?contractButtons(CONTRACTS.filter(c=>c.v>=s.contract.minimum),'declare'):''}`;
     } else if(s.phase==='following') {
-      body=`<div class="actions-title">${mine?'Will you defend?':`${esc(nameOf(s.turn))} decides whether to defend`}</div><div class="actions-subtitle">The declarer needs at least six tricks. You may join the defense or sit out. Only participating defenders score supe.</div>
-      ${mine?`<div class="action-row">${button('Dođem','followYes',{variant:'primary'})}${button('Ne','followNo')}${button('Ne bi','followRatherNot')}</div>`:''}`;
+      body=`${mine?'':`<div class="actions-title">${esc(nameOf(s.turn))} decides whether to defend</div>`}
+      ${mine?`<div class="action-row">${button('Dođem','followYes',{variant:'primary'})}${button('Ne','followNo')}${button('Ne bi','followRatherNot')}${button('Imam želju','followWish')}</div>`:''}`;
     } else if(s.phase==='calling') {
       body=`<div class="actions-title">${mine?'Invite the other defender?':`${esc(nameOf(s.turn))} decides whether to invite a partner`}</div>
       <div class="actions-subtitle">Inviting brings the other defender into the tricks. The invited player earns no points and cannot say Kontra. You receive the combined defenders' supe but need at least four tricks together.</div>
@@ -571,6 +578,7 @@
       case 'declare':send('declare',{value:Number(value)});return;
       case 'followYes':send('follow',{choice:'dodjem'});return;
       case 'followNo':send('follow',{choice:'ne'});return;
+      case 'followWish':send('follow',{choice:'imam-zelju'});return;
       case 'followRatherNot':send('follow',{choice:'ne-bi'});return;
       case 'callYes':send('call',{yes:true});return;
       case 'callNo':send('call',{yes:false});return;
