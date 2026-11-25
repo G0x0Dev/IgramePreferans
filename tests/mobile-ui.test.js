@@ -33,7 +33,7 @@ test('the active table is free of the rules/help panel and long instructions',()
   assert.match(app,/class="result-summary"/);
 });
 test('Dalje, Igra Betl and Igra Sans have visible distinct action styles',()=>{
-  assert.match(app,/button\('Dalje · Pass','pass',\{variant:'pass-action'\}\)/);
+  assert.match(app,/button\('Dalje','pass',\{variant:'pass-action'\}\)/);
   assert.match(app,/button\('Igra Betl','hand',\{value:6,variant:'igra-betl'\}\)/);
   assert.match(app,/button\('Igra Sans','hand',\{value:7,variant:'igra-sans'\}\)/);
   for(const className of ['pass-action','igra-betl','igra-sans']){
