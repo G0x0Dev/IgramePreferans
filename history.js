@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-export const MAX_HISTORY=200;
+export const MAX_HISTORY=200; // number of records sent to browsers / accepted per backup
 const file=process.env.HISTORY_FILE || join(process.env.DATA_DIR || process.cwd(), 'preferans-results.json');
 
 export function normalizeRecord(value){
@@ -27,7 +27,7 @@ export function mergeHistory(current,incoming){
     const record=normalizeRecord(item);
     if(record && !byId.has(record.id))byId.set(record.id,record);
   }
-  return [...byId.values()].sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)||a.id.localeCompare(b.id)).slice(0,MAX_HISTORY);
+  return [...byId.values()].sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)||a.id.localeCompare(b.id));
 }
 export function loadHistory(){
   try{
