@@ -62,7 +62,7 @@ export function createGame(settings = {}) {
     scores: { bula: [startBula,startBula,startBula], refe: [0,0,0], supe: [[0,0,0],[0,0,0],[0,0,0]] },
     auction: null, contract: null, follows: [null,null,null], followMessages: [null,null,null],
     caller: null, invited: null, doubler: null, doubleStage: 0, multiplier: 1,
-    turn: null, firstBidder: null, trick: [], lastTrick: null,
+    turn: null, firstBidder: null, trick: [], lastTrick: null, completedTricks: [],
     tricks: [0,0,0], trickNumber: 0, active: [],
     summary: null, log: [], finished: false
   };
@@ -108,7 +108,7 @@ export function deal(g, deckOverride = null) {
   g.contract = null;
   g.follows = [null,null,null]; g.followMessages = [null,null,null];
   g.caller = null; g.invited = null; g.doubler = null; g.doubleStage = 0; g.multiplier = 1;
-  g.trick = []; g.lastTrick = null; g.tricks = [0,0,0]; g.trickNumber = 0;
+  g.trick = []; g.lastTrick = null; g.completedTricks = []; g.tricks = [0,0,0]; g.trickNumber = 0;
   g.active = []; g.summary = null;
   g.firstBidder = next(g.dealer);
   g.turn = g.firstBidder;
@@ -420,6 +420,7 @@ export function playCard(g,seat,card) {
     g.tricks[winner]++;
     g.trickNumber++;
     g.lastTrick={cards:[...g.trick],winner,number:g.trickNumber};
+    (g.completedTricks??=[]).push(g.lastTrick);
     g.turn=null;
     g.phase='trickReview';
     log(g,`Trick ${g.trickNumber}: ${publicName(g,winner)} wins.`);
