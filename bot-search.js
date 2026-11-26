@@ -251,7 +251,7 @@ export function scoreOutcome(config,tricks){
   const avg=sum(scores)/3;
   return {scores,utility:scores.map(n=>avg-n),success,tricks};
 }
-// For the last two tricks, solve the small sampled game tree exactly.
+// For the last three tricks, solve the small sampled game tree exactly.
 // Each actor maximizes their own relative score (max-n), including individual
 // supa and doubled/called defense incentives. No omniscient real-deal search.
 function endgame(hands,table,counts,seat,config,trump){
@@ -278,7 +278,7 @@ export function simulate(world,config,{trick=[],tricks=[0,0,0],turn=config.lead,
   for(let moves=0;moves<32;){
     if((misere&&counts[dec]>0)||(!misere&&sum(counts)-counts[dec]>=5)||sum(counts)>=10)break;
     if(!hands[seat]?.length)break;
-    if(forced===null&&active.every(i=>hands[i].length<=2))return endgame(hands,table,counts,seat,config,trump);
+    if(forced===null&&active.every(i=>hands[i].length<=3))return endgame(hands,table,counts,seat,config,trump);
     const c=forced!==null?forced:policy(hands,table,seat,active,trump,dec,misere,counts);
     forced=null;
     const index=hands[seat].indexOf(c);
