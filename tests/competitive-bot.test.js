@@ -114,7 +114,7 @@ function playRound(seed,advancedSeat){
 }
 test('competitive bot benchmark: paired seeded hands against the former bot',()=>{
   let oldTotal=0,newTotal=0,moves=0,maxMs=0,wins=0,losses=0;
-  const rounds=30;
+  const rounds=90;
   for(let i=0;i<rounds;i++){
     const seat=i%3,seed='benchmark-'+i;
     const old=playRound(seed,-1);
@@ -128,5 +128,6 @@ test('competitive bot benchmark: paired seeded hands against the former bot',()=
   console.log('COMPETITIVE_BENCHMARK '+JSON.stringify({rounds,oldAverage:oldTotal/rounds,newAverage:newTotal/rounds,improvement:(newTotal-oldTotal)/rounds,wins,losses,moves,maxMs:Math.round(maxMs)}));
   assert.ok(moves>30,'the new bot must actively bid and play');
   assert.ok(Number.isFinite(newTotal));
+  assert.ok(newTotal>oldTotal,'competitive search should outperform the previous bot over the fixed benchmark');
   assert.ok(maxMs<5000,'each bot decision must have a practical upper latency');
 });
