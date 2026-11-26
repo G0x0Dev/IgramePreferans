@@ -229,7 +229,7 @@ function policy(hands,trick,seat,active,trump,dec,misere,counts){
 export function scoreOutcome(config,tricks){
   const {value,hand,dec,caller=null,doubler=null,active,multiplier=1,refeFactor=1}=config;
   const points=(value+(hand?1:0))*2*multiplier*refeFactor;
-  const defenders=seats.filter(s=>s!==dec),def=10; // defensive total below uses only actual tricks
+  const defenders=seats.filter(s=>s!==dec); // only actual completed tricks
   const defense=defenders.reduce((n,s)=>n+tricks[s],0),success=value===6?tricks[dec]===0:tricks[dec]>=6;
   const scores=[0,0,0];
   scores[dec]+=(success?-1:1)*10*points;
@@ -251,6 +251,25 @@ export function scoreOutcome(config,tricks){
   const avg=sum(scores)/3;
   return {scores,utility:scores.map(n=>avg-n),success,tricks};
 }
+// For the last two tricks, solve the small sampled game tree exactly.
+// Each actor maximizes their own relative score (max-n), including individual
+// supa and doubled/called defense incentives. No omniscient real-deal search.
+function endgame(hands,table,counts,seat,config,trump){
+  const dec=config.dec,misere=config.value===6;
+  if((misere&&counts[dec]>0)||(!misere&&sum(counts)-counts[dec]>=5)||sum(counts)>=10||!hands[seat].length)
+    return scoreOutcome(config,counts);
+  let best=null;
+  for(const card of legal(hands[seat],table,trump)){
+    const nextHands=hands.map((h,i)=>i===seat?h.filter(c=>c!==card):h);
+    const nextTable=[...table,{seat,card}];
+    const done=nextTable.length===config.active.length;
+    const nextSeat=done?winner(nextTable,trump):nextActive(seat,config.active);
+    const nextCounts=[...counts];if(done)nextCounts[nextSeat]++;
+    const result=endgame(nextHands,done?[]:nextTable,nextCounts,nextSeat,config,trump);
+    if(!best||result.utility[seat]>best.utility[seat])best=result;
+  }
+  return best;
+}
 export function simulate(world,config,{trick=[],tricks=[0,0,0],turn=config.lead,firstCard=null}={}){
   const hands=world.hands.map(h=>[...h]),active=config.active,
     trump=config.value>=2&&config.value<=5?config.value-2:-1,dec=config.dec,misere=config.value===6;
@@ -259,6 +278,7 @@ export function simulate(world,config,{trick=[],tricks=[0,0,0],turn=config.lead,
   for(let moves=0;moves<32;){
     if((misere&&counts[dec]>0)||(!misere&&sum(counts)-counts[dec]>=5)||sum(counts)>=10)break;
     if(!hands[seat]?.length)break;
+    if(forced===null&&active.every(i=>hands[i].length<=2))return endgame(hands,table,counts,seat,config,trump);
     const c=forced!==null?forced:policy(hands,table,seat,active,trump,dec,misere,counts);
     forced=null;
     const index=hands[seat].indexOf(c);
