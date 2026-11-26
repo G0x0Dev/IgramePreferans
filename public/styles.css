@@ -540,3 +540,83 @@
     width:100%;min-height:46px;white-space:normal;
   }
 }
+
+/* Keep the actual contract in a high-contrast, always-visible top-right
+   game plate. The declarer's prior bid is no longer repeated beside their
+   avatar once the contract has been declared. */
+.game-stage>.stage-header{
+  border-bottom:1px solid #c9ab6650;
+  background:linear-gradient(100deg,#203640 10%,#2d3431 100%);
+}
+.game-stage .phase-tag{
+  display:flex;flex-direction:column;align-items:flex-end;justify-content:center;
+  gap:4px;flex-shrink:0;min-width:132px;padding:10px 14px;
+  border-radius:13px;border:2px solid #bba06a;
+  background:linear-gradient(135deg,#3b4738,#222f34);
+  color:#fff1ce;box-shadow:0 3px 15px #0007;
+  text-transform:none;white-space:normal;
+}
+.game-stage .phase-tag.current-contract{
+  border-color:#f6cb7e;background:linear-gradient(125deg,#584124,#29383a);
+  box-shadow:0 0 0 2px #dcb87538,0 8px 18px #0009;
+}
+.game-stage .phase-tag-caption{
+  font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:#e4c995;font-weight:800;
+}
+.game-stage .phase-tag-main{
+  display:flex;align-items:center;justify-content:flex-end;gap:7px;
+  max-width:100%;
+}
+.game-stage .phase-tag-main strong{
+  font-family:'Playfair Display',Georgia,serif;
+  font-size:19px;line-height:1.13;letter-spacing:0;
+  overflow-wrap:anywhere;text-align:right;
+}
+.game-stage .phase-tag-suit{font-size:27px;line-height:1;color:#f8e6bf}
+.game-stage .phase-tag-suit.red{color:#ff9792}
+
+/* A played turn is unmistakable: the circular avatar changes both its fill
+   and its outline; a small arrow points to the player. */
+.seat.playing-turn{z-index:5}
+.seat.playing-turn .avatar{
+  color:#172d2a;background:#ffe5a7;border:3px solid #fef9dd;
+  box-shadow:0 0 0 4px #2fd6a7c7,0 0 0 8px #2fd6a735,0 0 24px #a5ffe9bd;
+  transform:scale(1.10);
+}
+.seat.playing-turn .avatar::after{
+  content:'▶';position:absolute;top:-9px;right:-11px;
+  display:grid;place-items:center;
+  height:19px;width:19px;border-radius:50%;
+  font-size:10px;color:#0c312b;background:#75e8bc;
+  border:2px solid #f9f4d5;box-shadow:0 2px 6px #0008;
+}
+.seat.sitting-out .avatar{
+  background:#293238;border-color:#68767c;color:#aeb8b8;
+  opacity:.65;box-shadow:none;
+}
+/* Highest bids from unsuccessful auction participants stay readable, but
+   gray (including former Igra bids) rather than looking like the contract. */
+.seat .auction-choice.losing-bid{
+  background:#414a50;border-color:#8c979b;color:#e2e5e3;
+  box-shadow:0 3px 7px #0006;
+}
+.projected-score-table{margin-top:5px}
+.projected-score-table .number{font-size:17px}
+.projected-score-table .projected-status{font-size:11px;font-weight:750}
+.projected-score-note{color:var(--muted);font-size:11px;line-height:1.55;margin:9px 0 0}
+@media(max-width:600px){
+  .game-stage>.stage-header{padding:9px 10px 8px}
+  .game-stage .phase-tag{max-width:52%;min-width:112px;padding:7px 9px;gap:3px}
+  .game-stage .phase-tag-caption{font-size:8px}
+  .game-stage .phase-tag-main{gap:5px}
+  .game-stage .phase-tag-main strong{font-size:16px}
+  .game-stage .phase-tag-suit{font-size:22px}
+  .seat.playing-turn .avatar{transform:scale(1.08)}
+  .seat.playing-turn .avatar::after{
+    top:-8px;right:-10px;width:16px;height:16px;font-size:9px;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .seat.playing-turn .avatar{transition:none}
+}
