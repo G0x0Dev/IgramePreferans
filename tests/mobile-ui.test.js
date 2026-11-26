@@ -255,3 +255,82 @@ test('Mogu is displayed as Moje; passing displays only Dalje',()=>{
   assert.match(app,/button\('Dalje','pass',\{variant:'pass-action'\}\)/);
   assert.doesNotMatch(app,/Dalje · Pass|button\('Mogu '/);
 });
+
+test('declarer bid is replaced by the game plate; losing bids gray out and active avatar changes',()=>{
+  const start=app.indexOf('  function playerPlace(');
+  const end=app.indexOf('  function table(',start);
+  assert.ok(start>0&&end>start,'seat renderer exists');
+  const state={
+    seat:0,turn:1,phase:'playing',
+    players:[{name:'Anna'},{name:'Bo'},{name:'Cem'}],
+    dealer:0,contract:{declarer:0,value:4,minimum:4},
+    active:[0,1],follows:[true,true,false],followMessages:[null,null,'Ne'],
+    handCounts:[10,10,10],tricks:[0,0,0],
+    auctionBadges:[
+      {label:'Herc',kind:'bid'},
+      {label:'Karo',kind:'bid'},
+      {label:'Pik',kind:'bid'}
+    ]
+  };
+  const names=i=>state.players[i].name;
+  const fn=new Function('state','auctionChoiceFor','esc','nameOf',
+    app.slice(start,end)+';return playerPlace;')(
+      state,(g,i)=>g.auctionBadges[i],String,names);
+  const declarer=fn(0,'me'),nextPlayer=fn(1,'left'),inactive=fn(2,'right');
+  assert.match(declarer,/Declarer/);
+  assert.doesNotMatch(declarer,/auction-choice/,'winning Herc bid is not repeated on the avatar');
+  assert.match(nextPlayer,/auction-choice bid losing-bid/);
+  assert.match(nextPlayer,/>Karo<\/span>/,'a losing high bid remains visible');
+  assert.match(nextPlayer,/playing-turn/,'current player gains a clear play-turn circle');
+  assert.match(nextPlayer,/Bo is playing/);
+  assert.match(inactive,/sitting-out/,'declined defender has a gray circle');
+  assert.match(inactive,/auction-choice bid losing-bid/);
+  assert.doesNotMatch(inactive,/playing-turn/);
+  state.contract=null;state.phase='auction';state.turn=0;
+  assert.match(fn(0,'me'),/auction-choice bid/,'before the contract is declared, bids remain visible');
+  assert.doesNotMatch(fn(0,'me'),/playing-turn/,'the extra turn ring is for card play only');
+  assert.match(css,/\.seat\.playing-turn \.avatar\{/);
+  assert.match(css,/\.seat\.playing-turn \.avatar::after\{/);
+  assert.match(css,/\.seat \.auction-choice\.losing-bid\{/);
+  assert.match(css,/\.seat\.sitting-out \.avatar\{/);
+});
+test('top-right game plate displays a large contract and trump suit',()=>{
+  const start=app.indexOf('  function contractCorner(');
+  const end=app.indexOf('  function gameScreen(',start);
+  assert.ok(start>0&&end>start,'top-right game plate helper exists');
+  const contracts=[
+    {v:2,n:'Pik',s:'S'},{v:3,n:'Karo',s:'D'},{v:4,n:'Herc',s:'H'},
+    {v:5,n:'Tref',s:'C'},{v:6,n:'Betl',s:null},{v:7,n:'Sans',s:null}
+  ];
+  const contractName=(v,hand=false)=>(hand?'Igra-':'')+(contracts.find(c=>c.v===v)?.n||'?');
+  const corner=new Function('CONTRACTS','SUITS','contractName','esc',
+    app.slice(start,end)+';return contractCorner;')(
+      contracts,{S:'♠',D:'♦',H:'♥',C:'♣'},contractName,String);
+  const played=corner({contract:{declarer:0,value:4,minimum:4,hand:false}});
+  assert.match(played,/class="phase-tag current-contract"/);
+  assert.match(played,/aria-label="Current game: Herc"/);
+  assert.match(played,/phase-tag-suit red" aria-hidden="true">♥/);
+  assert.match(corner({contract:{declarer:0,value:null,minimum:3}}),/Winning bid/);
+  assert.match(corner({contract:null}),/Bidding/);
+  assert.match(css,/\.game-stage \.phase-tag\.current-contract\{/);
+  assert.match(css,/\.game-stage \.phase-tag-main strong\{/);
+  assert.match(app,/contractCorner\(state\)/);
+});
+test('scoreboard offers projected signed standings but keeps real scoring untouched',()=>{
+  assert.match(app,/class="score-table projected-score-table"/);
+  assert.match(app,/g\.projectedScores\?\.\[i\]\?\?0/);
+  assert.match(app,/score<0\?'Ahead':score>0\?'Behind':'Even'/);
+  assert.match(app,/score>0\?'\+':''/);
+  assert.match(app,/combined remaining bula ÷ 3 × 10/);
+  assert.match(app,/Preview only — official scores do not change/);
+  assert.match(app,/g\.finalScores\[i\]/,'the original scorecard is still displayed');
+  assert.doesNotMatch(app,/Current leader:/);
+  assert.match(css,/\.projected-score-table\{/);
+  assert.match(css,/\.projected-score-note\{/);
+});
+test('Kontra controls remove Accept and the Raise the stakes multiplier heading',()=>{
+  assert.match(app,/button\('Može','doubleOk'\)/);
+  assert.doesNotMatch(app,/Moze · Accept/);
+  assert.doesNotMatch(app,/Raise the stakes\?/);
+  assert.match(app,/button\(labels\[stage\],'doubleRaise'/);
+});
