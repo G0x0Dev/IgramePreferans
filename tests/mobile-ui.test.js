@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createGame,makeDeck,deal,auctionAction,viewFor,takeTalon,discard,declare} from '../game.js';
 
 const app=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../public/styles.css',import.meta.url),'utf8');
@@ -155,6 +156,42 @@ test('table badges show each player’s highest bid, or Dalje if they only passe
     'show the strongest ordinary contract even after Dalje');
   assert.ok(app.includes('class="auction-choice'),'seat badges are rendered');
   assert.ok(css.includes('.seat .auction-choice{'),'seat badges have table styling');
+});
+test('real losing bidders keep their highest contract beside their seat after auction ends',()=>{
+  const g=createGame();
+  g.players=['Anna','Bo','Cem'].map(name=>({name,online:true}));
+  deal(g,makeDeck());
+  const first=g.turn;
+  auctionAction(g,g.turn,'bid',2); // first bidder: Pik
+  const second=g.turn;
+  auctionAction(g,g.turn,'bid',3); // second bidder: Karo
+  const third=g.turn;
+  auctionAction(g,g.turn,'bid',4); // third bidder: Herc
+  auctionAction(g,g.turn,'pass');
+  auctionAction(g,g.turn,'pass');
+  assert.equal(g.phase,'talon');
+  assert.equal(g.contract.declarer,third);
+  const names=['Pik','Karo','Herc','Tref','Betl','Sans'];
+  const contractName=value=>names[value-2]||'?';
+  const start=app.indexOf('  function auctionChoiceFor(');
+  const end=app.indexOf('  function playerPlace(',start);
+  const label=new Function('contractName',app.slice(start,end)+';return auctionChoiceFor;')(contractName);
+  for(const seat of [first,second,third]){
+    const view=viewFor(g,seat,'FRIENDS');
+    assert.deepEqual(label(view,first),{label:'Pik',kind:'bid'},
+      'first losing player must still display Pik, not Dalje or the winning Herc');
+    assert.deepEqual(label(view,second),{label:'Karo',kind:'bid'},
+      'second losing player must still display Karo, not Dalje or the winning Herc');
+    assert.deepEqual(label(view,third),{label:'Herc',kind:'bid'});
+  }
+  takeTalon(g,third);
+  discard(g,third,g.hands[third].slice(0,2));
+  declare(g,third,4);
+  assert.equal(g.phase,'following');
+  const view=viewFor(g,second,'FRIENDS');
+  assert.deepEqual(label(view,first),{label:'Pik',kind:'bid'});
+  assert.deepEqual(label(view,second),{label:'Karo',kind:'bid'},
+    'loser maximum remains visible during defense decisions and later card play');
 });
 test('each new trick card drops once, without replaying on normal state updates',()=>{
   const start=app.indexOf('  function freshPlayedCard(');
