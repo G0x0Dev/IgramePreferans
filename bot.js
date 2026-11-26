@@ -8,8 +8,8 @@ import {observe,worlds,encode,decode,handQuality,discardPlans,simulate,evaluate,
 const seats=[0,1,2];
 const VALUES=[2,3,4,5,6,7];
 const cache=new WeakMap();
-const SAMPLES=12;
-const PLAY_SAMPLES=24;
+const SAMPLES=28;
+const PLAY_SAMPLES=56;
 const bidLimit=0.59;
 const stableBest=items=>[...items].sort((a,b)=>b.mean-a.mean||b.success-a.success||b.value-a.value)[0];
 function declarerConfig(o,value,hand=false){
@@ -87,7 +87,7 @@ function pickIgra(g,o){
   return (best||stableBest(ratings)).value;
 }
 function plansFor(o){
-  const samples=worlds(o,16,'talon-contract');
+  const samples=worlds(o,28,'talon-contract');
   const candidates=[];
   for(const value of VALUES.filter(v=>v>=o.contract.minimum)){
     const plans=discardPlans(o.own,value,o.own.length===12?3:1);
@@ -104,7 +104,7 @@ function plansFor(o){
   return best||{value:o.contract.minimum,discard:discardPlans(o.own,o.contract.minimum,1)[0].discard};
 }
 function compareDefense(o){
-  const samples=worlds(o,20,'defend');
+  const samples=worlds(o,40,'defend');
   const dec=o.contract.declarer,other=seats.find(i=>i!==dec&&i!==o.seat);
   const alone=configFor(o,o.contract.value,{active:[dec,o.seat],caller:null,doubler:null});
   const both=configFor(o,o.contract.value,{active:seats,caller:null,doubler:null});
@@ -120,7 +120,7 @@ function compareDefense(o){
   return expectedJoin>expectedDecline+2;
 }
 function chooseInvite(o){
-  const samples=worlds(o,20,'invite'),dec=o.contract.declarer;
+  const samples=worlds(o,40,'invite'),dec=o.contract.declarer;
   const solo=evaluate(samples,configFor(o,o.contract.value,{active:[dec,o.seat],caller:null,doubler:null}),o.seat);
   const invite=evaluate(samples,configFor(o,o.contract.value,{active:seats,caller:o.seat,doubler:null}),o.seat);
   return invite.mean>solo.mean+3;
@@ -128,7 +128,7 @@ function chooseInvite(o){
 function pickDouble(o,allowed){
   const raise=allowed.find(a=>a!=='ok');
   if(!raise)return 'ok';
-  const samples=worlds(o,24,'double');
+  const samples=worlds(o,48,'double');
   const dec=o.contract.declarer;
   const active=[dec,...seats.filter(i=>i!==dec&&o.follows[i])];
   const normal=configFor(o,o.contract.value,{active,caller:o.caller,doubler:o.doubler});
