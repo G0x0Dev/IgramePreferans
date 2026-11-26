@@ -53,8 +53,8 @@ On the welcome page, choose **Play solo vs 2 computers** instead of joining the 
 
 - Solo practice uses **its own private, temporary server session** (rejoining on refresh is supported). It never joins or occupies the five-friend table.
 - **Practice results do not count** towards the shared match history, wins or cumulative leaderboard.
-- Computer players are **competitive, score-aware opponents**. They estimate winning odds for ordinary bids, Igra, Betl and Sans, optimize the talon discard and contract, weigh defensive participation, invitations and raises, remember every public trick, infer void suits, and compare legal plays over sampled hidden-card deals. The final two tricks are solved exactly within each sample. They never consult actual opponents' hidden hands or an unrevealed talon. Their decisions remain bounded approximations, not a guarantee of perfect play.
-- The test suite contains a seeded head-to-head benchmark against the previous bot and checks that changing hidden opponent cards does not affect a decision. See `tests/competitive-bot.test.js`.
+- Computer players are **competitive, score-aware opponents**. They estimate winning odds for ordinary bids, Igra, Betl and Sans, optimize the talon discard and contract, weigh defensive participation, invitations and raises, remember every public trick, infer void suits, and compare legal plays over sampled hidden-card deals. The final three tricks are solved exactly within each sample. The bot compares up to 56 plausible card distributions when choosing a card. They never consult actual opponents' hidden hands or an unrevealed talon. Their decisions remain bounded approximations, not a guarantee of perfect play.
+- The test suite contains a 90-deal seeded head-to-head benchmark against the previous bot and checks that changing hidden opponent cards does not affect a decision. See `tests/competitive-bot.test.js`.
 - Press **Back to friends** to return to the shared table. Existing friend sessions are kept separately in browser storage.
 - Server restarts clear active solo games, just as they clear active multiplayer rounds.
 
