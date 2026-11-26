@@ -301,7 +301,7 @@
     return passed?{label:'Dalje',kind:'pass'}:null;
   }
   function playerPlace(i,pos) {
-    const p=state.players[i],turn=state.turn===i, me=i===state.seat;
+    const p=state.players[i],me=i===state.seat;
     const role=state.contract ? (i===state.contract.declarer?'Declarer':state.active.length?state.active.includes(i)?'Defender':'Sitting out':state.follows[i]===false?'Declined':state.follows[i]===true?'Defender':'') : i===state.dealer?'Dealer':'';
     const tricks=state.tricks[i];
     const response=state.followMessages?.[i];
@@ -313,10 +313,10 @@
     // but in neutral gray because that bid did not win the auction.
     const hideWinningBid=declared&&state.contract.declarer===i;
     const losingBid=declared&&state.contract.declarer!==i;
-    const takingTurn=state.phase==='playing'&&turn;
-    const sittingOut=['playing','trickReview'].includes(state.phase)&&
-      state.active?.length>0&&!state.active.includes(i);
-    return `<div class="seat ${pos} ${turn?'current':''} ${takingTurn?'playing-turn':''} ${sittingOut?'sitting-out':''}"><div class="avatar" ${takingTurn?`title="${esc(nameOf(i))} is playing"`:''}>${esc(p?.name?.charAt(0)?.toUpperCase()||'?')}</div>
+    // The declarer is the attacker for this hand. Mark only their avatar
+    // with an outline; do not highlight the changing card-play turn.
+    const attacker=state.contract?.declarer===i;
+    return `<div class="seat ${pos} ${attacker?'attacker':''}"><div class="avatar" ${attacker?`title="${esc(nameOf(i))} attacks this hand"`:''}>${esc(p?.name?.charAt(0)?.toUpperCase()||'?')}</div>
       <span class="person">${esc(p?.name||'—')}${me?' (you)':''}</span>
       ${auctionChoice&&!hideWinningBid?`<span class="auction-choice ${auctionChoice.kind}${losingBid?' losing-bid':''}" aria-label="${esc(nameOf(i))} highest bid: ${esc(auctionChoice.label)}">${esc(auctionChoice.label)}</span>`:''}
       <span class="info">${esc(role)}${responseText}${role&&state.contract?' · ':''}${state.contract?`${tricks} trick${tricks!==1?'s':''}`:''}</span>
@@ -459,17 +459,13 @@
   function sidebar() {
     const g=state;
     return `<aside class="side-stack"><div class="panel panel-pad"><span class="eyebrow">Live scorecard</span><h3 class="side-title">The scores</h3>
-      <table class="score-table"><thead><tr><th>Player</th><th>Bula</th><th>Refe</th><th>Final</th></tr></thead><tbody>
-      ${g.players.map((p,i)=>`<tr class="${i===g.seat?'own':''} ${g.finalScores[i]===Math.min(...g.finalScores)?'leader-row':''}"><td><i class="tiny-online ${p?.online?'':'off'}"></i>${esc(p?.name||'—')} ${g.finalScores[i]===Math.min(...g.finalScores)?'★':''}</td>
-      <td class="number ${g.scores.bula[i]<0?'good':''}">${g.scores.bula[i]}</td><td>${g.scores.refe[i]}</td><td class="number ${g.finalScores[i]<0?'good':'bad'}">${g.finalScores[i]}</td></tr>`).join('')}</tbody></table>
-      <div class="score-mini"><span>Combined bula remaining</span><strong>${g.scores.bula.reduce((n,x)=>n+x,0)}</strong></div>
-      <div class="soft-divider"></div><div class="group-label">Projected standings · ahead or behind</div>
-      <table class="score-table projected-score-table" aria-label="Projected scores after subtracting one third of remaining bula"><thead><tr><th>Player</th><th>Adjusted</th><th>Position</th></tr></thead><tbody>
+      <table class="score-table live-score-table" aria-label="Live Preferans scores and adjusted standings"><thead><tr><th>Player</th><th>Bula</th><th>Refe</th><th>Final</th><th title="Current final score minus one third of combined remaining bula × 10; negative is ahead">Adjusted</th></tr></thead><tbody>
       ${g.players.map((p,i)=>{
-        const score=g.projectedScores?.[i]??0;
-        return `<tr class="${i===g.seat?'own':''}"><td>${esc(p?.name||'—')}</td><td class="number ${score<0?'good':score>0?'bad':''}">${score>0?'+':''}${score}</td><td class="projected-status ${score<0?'good':score>0?'bad':''}">${score<0?'Ahead':score>0?'Behind':'Even'}</td></tr>`;
+        const adjusted=g.projectedScores?.[i]??0;
+        return `<tr class="${i===g.seat?'own':''} ${g.finalScores[i]===Math.min(...g.finalScores)?'leader-row':''}"><td><i class="tiny-online ${p?.online?'':'off'}"></i>${esc(p?.name||'—')} ${g.finalScores[i]===Math.min(...g.finalScores)?'★':''}</td>
+        <td class="number ${g.scores.bula[i]<0?'good':''}">${g.scores.bula[i]}</td><td>${g.scores.refe[i]}</td><td class="number ${g.finalScores[i]<0?'good':'bad'}">${g.finalScores[i]}</td><td class="number adjusted-score ${adjusted<0?'good':adjusted>0?'bad':''}">${adjusted>0?'+':''}${adjusted}</td></tr>`;
       }).join('')}</tbody></table>
-      <p class="projected-score-note">Adjusted = current score − (combined remaining bula ÷ 3 × 10). Negative is ahead; positive is behind. Preview only — official scores do not change.</p>
+      <div class="score-mini"><span>Combined bula remaining</span><strong>${g.scores.bula.reduce((n,x)=>n+x,0)}</strong></div>
       <div class="soft-divider"></div><div class="group-label">Supa ledger · row scores against column</div>
       <table class="supa-ledger"><thead><tr><th>From \ Against</th>${g.players.map(p=>`<th>${esc((p?.name||'?').slice(0,8))}</th>`).join('')}</tr></thead><tbody>
       ${g.scores.supe.map((row,i)=>`<tr><td>${esc(nameOf(i).slice(0,11))}</td>${row.map((n,j)=>`<td>${i===j?'—':n}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
