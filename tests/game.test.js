@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   makeDeck,shuffle,sortHand,createGame,deal,auctionAction,igraDeclare,takeTalon,discard,declare,
   follow,callPartner,doubleAction,legalCards,winningSeat,playCard,advanceTrick,
-  finalScores,settleMatch,viewFor
+  finalScores,projectedScores,settleMatch,viewFor
 } from '../game.js';
 
 function game(settings={}) {
@@ -790,4 +790,24 @@ test('otpisivanje reduces total bula to zero, favouring lowest existing bula',()
   assert.deepEqual(h.scores.bula,[4,-1,-3]);
   const bad=game();
   assert.throws(()=>settleMatch(bad),/only possible between rounds/i);
+});
+
+test('equal-share projected standings show signed ahead/behind values without changing scores',()=>{
+  const g=game();
+  assert.deepEqual(projectedScores(g),[0,0,0],
+    'everyone starts level even though raw scores are all positive');
+  g.scores.bula=[90,100,100];
+  g.scores.supe[0][1]=30;
+  const before=structuredClone(g.scores);
+  assert.deepEqual(finalScores(g),[870,1030,1000]);
+  assert.deepEqual(projectedScores(g),[-96.67,63.33,33.33],
+    'subtract (290 / 3) * 10 from each current final score');
+  assert.deepEqual(viewFor(g,1,'FRIENDS').projectedScores,[-96.67,63.33,33.33],
+    'the same public preview is sent to every seat');
+  assert.deepEqual(g.scores,before,'projected standings never mutate the match');
+  assert.ok(Math.abs(projectedScores(g).reduce((a,b)=>a+b,0))<=.02,
+    'signed preview is zero-centered, within two-decimal rounding');
+  g.scores.bula=[80,90,-170];g.scores.supe=[[0,0,0],[0,0,0],[0,0,0]];
+  assert.deepEqual(projectedScores(g),finalScores(g),
+    'when no bula remains to subtract, projected scores equal raw final scores');
 });

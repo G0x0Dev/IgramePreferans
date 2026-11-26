@@ -540,6 +540,14 @@ export function finalScores(g) {
     return b*10 - outgoing + incoming;
   });
 }
+// Read-only standings preview: subtract one-third of the *combined remaining*
+// bula from every player (after converting bula to 10 score points each).
+// This is an equal-share projection, not an actual otpisivanje or score edit.
+// Working in thirds of integer points avoids floating-point drift.
+export function projectedScores(g) {
+  const totalBula=g.scores.bula.reduce((sum,b)=>sum+b,0);
+  return finalScores(g).map(score=>Math.round((score*3-totalBula*10)*100/3)/100);
+}
 export function allowedDoubles(g,seat) {
   if(g.phase!=='doubles' || g.turn!==seat || !isInt(seat))return [];
   if(g.doubleStage===0){
@@ -552,7 +560,7 @@ export function viewFor(g,seat,roomCode) {
   return {
     roomCode, seat, phase:g.phase, settings:g.settings, dealer:g.dealer,round:g.round,
     players:g.players.map((p,i)=>p?{name:p.name,online:!!p.online,seat:i}:null),
-    scores:g.scores,finalScores:finalScores(g),
+    scores:g.scores,finalScores:finalScores(g),projectedScores:projectedScores(g),
     hands:own?g.hands[seat]:[], handCounts:g.hands.map(h=>h.length),
     talonCount:g.talon.length, talon:g.phase==='talon' ? [...g.talon] : [],
     auction:g.auction ? {...g.auction} : null,

@@ -307,9 +307,18 @@
     const response=state.followMessages?.[i];
     const responseText=response && i!==state.contract?.declarer ? ` · “${esc(response)}”` : '';
     const auctionChoice=auctionChoiceFor(state,i);
-    return `<div class="seat ${pos} ${turn?'current':''}"><div class="avatar">${esc(p?.name?.charAt(0)?.toUpperCase()||'?')}</div>
+    const declared=Number.isInteger(state.contract?.value);
+    // Once the actual game is known, its prominent top-right panel replaces
+    // the declarer's old bid badge. Other players keep their highest bid,
+    // but in neutral gray because that bid did not win the auction.
+    const hideWinningBid=declared&&state.contract.declarer===i;
+    const losingBid=declared&&state.contract.declarer!==i;
+    const takingTurn=state.phase==='playing'&&turn;
+    const sittingOut=['playing','trickReview'].includes(state.phase)&&
+      state.active?.length>0&&!state.active.includes(i);
+    return `<div class="seat ${pos} ${turn?'current':''} ${takingTurn?'playing-turn':''} ${sittingOut?'sitting-out':''}"><div class="avatar" ${takingTurn?`title="${esc(nameOf(i))} is playing"`:''}>${esc(p?.name?.charAt(0)?.toUpperCase()||'?')}</div>
       <span class="person">${esc(p?.name||'—')}${me?' (you)':''}</span>
-      ${auctionChoice?`<span class="auction-choice ${auctionChoice.kind}" aria-label="${esc(nameOf(i))} bid: ${esc(auctionChoice.label)}">${esc(auctionChoice.label)}</span>`:''}
+      ${auctionChoice&&!hideWinningBid?`<span class="auction-choice ${auctionChoice.kind}${losingBid?' losing-bid':''}" aria-label="${esc(nameOf(i))} highest bid: ${esc(auctionChoice.label)}">${esc(auctionChoice.label)}</span>`:''}
       <span class="info">${esc(role)}${responseText}${role&&state.contract?' · ':''}${state.contract?`${tricks} trick${tricks!==1?'s':''}`:''}</span>
       ${!me&&state.handCounts[i]?`<div class="mini-backs"><span class="mini-back"></span><span class="mini-back"></span><span class="mini-back"></span><span class="mini-back"></span></div>`:''}</div>`;
   }
@@ -417,8 +426,8 @@
     } else if(s.phase==='doubles') {
       const labels=['Kontra','Rekontra','Subkontra'];
       const stage=s.doubleStage;
-      body=`<div class="actions-title">${mine?'Raise the stakes?':`${esc(nameOf(s.turn))} decides the stakes`} · ×${s.multiplier}</div>
-        ${mine?`<div class="action-row">${button('Moze · Accept','doubleOk')}${s.availableDoubles?.includes(['kontra','rekontra','subkontra'][stage])?button(labels[stage],'doubleRaise',{variant:'primary'}):''}</div>`:''}`;
+      body=`${mine?'':`<div class="actions-title">${esc(nameOf(s.turn))} decides the stakes</div>`}
+        ${mine?`<div class="action-row">${button('Može','doubleOk')}${s.availableDoubles?.includes(['kontra','rekontra','subkontra'][stage])?button(labels[stage],'doubleRaise',{variant:'primary'}):''}</div>`:''}`;
     } else if(s.phase==='playing') {
       body=`<div class="actions-title">${mine?'Your turn — play one card':`${esc(nameOf(s.turn))} is playing`}</div><div class="actions-subtitle">${mine?'You must follow the led suit if possible, or play trump if void in a trump contract. Only legal cards can be selected.':'Follow suit, trump when void in trump games, and capture tricks to meet your contract.'}</div>`;
     } else if(s.phase==='trickReview') {
@@ -453,13 +462,33 @@
       <table class="score-table"><thead><tr><th>Player</th><th>Bula</th><th>Refe</th><th>Final</th></tr></thead><tbody>
       ${g.players.map((p,i)=>`<tr class="${i===g.seat?'own':''} ${g.finalScores[i]===Math.min(...g.finalScores)?'leader-row':''}"><td><i class="tiny-online ${p?.online?'':'off'}"></i>${esc(p?.name||'—')} ${g.finalScores[i]===Math.min(...g.finalScores)?'★':''}</td>
       <td class="number ${g.scores.bula[i]<0?'good':''}">${g.scores.bula[i]}</td><td>${g.scores.refe[i]}</td><td class="number ${g.finalScores[i]<0?'good':'bad'}">${g.finalScores[i]}</td></tr>`).join('')}</tbody></table>
-      <div class="score-mini"><span>Current leader: ${esc(g.players[g.finalScores.indexOf(Math.min(...g.finalScores))]?.name||'—')}</span><strong>${Math.min(...g.finalScores)}</strong></div><div class="score-mini"><span>Combined bula remaining</span><strong>${g.scores.bula.reduce((n,x)=>n+x,0)}</strong></div>
-      
+      <div class="score-mini"><span>Combined bula remaining</span><strong>${g.scores.bula.reduce((n,x)=>n+x,0)}</strong></div>
+      <div class="soft-divider"></div><div class="group-label">Projected standings · ahead or behind</div>
+      <table class="score-table projected-score-table" aria-label="Projected scores after subtracting one third of remaining bula"><thead><tr><th>Player</th><th>Adjusted</th><th>Position</th></tr></thead><tbody>
+      ${g.players.map((p,i)=>{
+        const score=g.projectedScores?.[i]??0;
+        return `<tr class="${i===g.seat?'own':''}"><td>${esc(p?.name||'—')}</td><td class="number ${score<0?'good':score>0?'bad':''}">${score>0?'+':''}${score}</td><td class="projected-status ${score<0?'good':score>0?'bad':''}">${score<0?'Ahead':score>0?'Behind':'Even'}</td></tr>`;
+      }).join('')}</tbody></table>
+      <p class="projected-score-note">Adjusted = current score − (combined remaining bula ÷ 3 × 10). Negative is ahead; positive is behind. Preview only — official scores do not change.</p>
       <div class="soft-divider"></div><div class="group-label">Supa ledger · row scores against column</div>
       <table class="supa-ledger"><thead><tr><th>From \ Against</th>${g.players.map(p=>`<th>${esc((p?.name||'?').slice(0,8))}</th>`).join('')}</tr></thead><tbody>
       ${g.scores.supe.map((row,i)=>`<tr><td>${esc(nameOf(i).slice(0,11))}</td>${row.map((n,j)=>`<td>${i===j?'—':n}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
       <div class="panel panel-pad"><span class="eyebrow">Table history</span><h3 class="side-title">Recent actions</h3><ul class="log">${[...g.log].reverse().map(s=>`<li>${esc(s)}</li>`).join('')||'<li>Waiting for the first deal.</li>'}</ul></div>
       ${matchHistory()}</aside>`;
+  }
+  function contractCorner(g) {
+    const declared=Number.isInteger(g.contract?.value);
+    const hasMinimum=Number.isInteger(g.contract?.minimum);
+    const value=declared?g.contract.value:hasMinimum?g.contract.minimum:null;
+    const contract=CONTRACTS.find(c=>c.v===value);
+    const label=declared?'Current game':hasMinimum?'Winning bid':'Auction';
+    const name=declared?contractName(value,g.contract.hand):hasMinimum?contractName(value):'Bidding';
+    const suit=contract?.s?SUITS[contract.s]:'';
+    const red=contract?.s==='D'||contract?.s==='H';
+    return `<div class="phase-tag ${declared?'current-contract':''}" aria-label="${esc(label+': '+name)}">
+      <span class="phase-tag-caption">${esc(label)}</span>
+      <span class="phase-tag-main">${suit?`<span class="phase-tag-suit ${red?'red':''}" aria-hidden="true">${suit}</span>`:''}<strong>${esc(name)}</strong></span>
+    </div>`;
   }
   function gameScreen(playedCard=null) {
     const subtitle=state.seat===null?'Watching · waiting to play':state.turn===null?'Waiting for the next step':`${nameOf(state.turn)}${state.turn===state.seat?' (you)':''} to act`;
@@ -468,7 +497,7 @@
     const mobileDock=state.seat!==null && state.turn===state.seat &&
       ['auction','igraReveal','talon','discard','contract','following','calling','doubles'].includes(state.phase);
     return `<div class="app">${header()}<div class="layout"><main class="main-col"><section class="panel game-stage${mobileDock?' has-mobile-dock':''}" data-phase="${esc(state.phase)}">
-      <div class="stage-header"><div><span class="eyebrow">Round ${state.round} · Dealer: ${esc(nameOf(state.dealer))}</span><h2>${phaseTitle[state.phase]}</h2><p>${esc(subtitle)}</p></div><span class="phase-tag">${state.contract?contractName(state.contract.value,state.contract.hand):'Bidding'}</span></div>
+      <div class="stage-header"><div><span class="eyebrow">Round ${state.round} · Dealer: ${esc(nameOf(state.dealer))}</span><h2>${phaseTitle[state.phase]}</h2><p>${esc(subtitle)}</p></div>${contractCorner(state)}</div>
       ${table(playedCard)}${hand()}${actionPanel()}</section>
       ${state.lastTrick?`<div class="last-trick"><small>Last trick · ${esc(nameOf(state.lastTrick.winner))} won:</small>${state.lastTrick.cards.map(p=>cardHtml(p.card)).join('')}</div>`:''}
       </main>${sidebar()}</div></div>`;
