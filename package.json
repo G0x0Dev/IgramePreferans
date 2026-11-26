@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "prepare:cards": "node scripts/prepare-cards.js",
+    "postinstall": "npm run prepare:cards"
   },
   "engines": {
     "node": ">=22"
