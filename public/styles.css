@@ -608,3 +608,14 @@
 @media(prefers-reduced-motion:reduce){
   .seat.attacker .avatar{transition:none}
 }
+
+/* Historical North-German / Berliner card faces. Local artwork is layered over
+   the fallback pip/face renderer; familiar corner indices stay legible in
+   overlapping mobile hands. The image never intercepts gameplay input. */
+.french-card .north-german-face{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:fill;
+  border-radius:inherit;pointer-events:none;z-index:1;
+}
+.french-card .north-german-face[hidden]{display:none}
+.french-card .card-corner{z-index:2;position:relative;background:#fffdf5;border-radius:3px;width:max-content;padding:1px 2px}
+.french-card .card-corner.mirrored{position:absolute;right:0;bottom:0}
