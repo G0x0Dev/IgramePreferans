@@ -57,6 +57,10 @@ On the welcome page, choose **Play solo vs 2 computers** instead of joining the 
 - Press **Back to friends** to return to the shared table. Existing friend sessions are kept separately in browser storage.
 - Server restarts clear active solo games, just as they clear active multiplayer rounds.
 
+## North-German playing cards
+
+The game uses the historical **North-German (Berliner) pattern** of French-suited cards, with 32 ranks and suits as before. The original scans are from [Wikimedia Commons: Berlin Pattern (Single Cards)](https://commons.wikimedia.org/wiki/Category:Berlin_Pattern_(Single_Cards)), a public-domain historical deck. See the [International Playing-Card Society's pattern sheet](https://i-p-c-s.org/pattern/ps-59.html) for the design's history. Artwork is fetched and cached locally in `public/cards/north-german/` during `npm install`; it can also be prepared with `npm run prepare:cards`. Browser requests for card images are same-origin. If the external artwork is unavailable at build time, the original local pip and court renderer remains playable. Run `node scripts/prepare-cards.js --strict` to require all 32 source images. The game rules, rank identifiers, and scoring are unchanged.
+
 ## Mobile gameplay
 
 The game header remains below the phone's notch/status bar. On phones, **the active player's bidding and response buttons stay docked at the bottom of the screen**, within thumb reach and visible without scrolling the table; the table and overlapping hand appear above the controls. When it is someone else's turn, the controls return to normal page flow. The dock has bottom safe-area padding to avoid the phone's home indicator. Desktop retains the normal table-first layout. The game table uses a compact phone layout with **overlapping cards** so all 10–12 hand cards remain visible on small screens without horizontal card scrolling. Tap the exposed left edge (rank and suit) of a card to play or select it; a selected card rises above its neighbors. The bidding controls display in two columns on phones.
