@@ -511,3 +511,32 @@
 @media(prefers-reduced-motion:reduce){
   .played.incoming .playing-card{animation:none;will-change:auto}
 }
+
+/* Trump suit symbols sit above the contract name (♦ above Karo), instead of
+   occupying the same text line. Use the same treatment for all suit bids. */
+.button.suit-bid{
+  display:inline-flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;min-width:78px;line-height:1.15;text-align:center;
+}
+.button.suit-bid .suit-symbol{
+  display:block;font-size:23px;line-height:1;
+}
+/* Make the completed auction choice unmistakable at each player's seat. */
+.seat .auction-choice{
+  font-weight:900;
+  border-width:2px;
+}
+@media(max-width:600px){
+  .game-stage .button.suit-bid,
+  .game-stage.has-mobile-dock .auction-bid-line .button.suit-bid{
+    min-height:54px;padding:5px 8px;white-space:normal;
+  }
+  .game-stage .button.suit-bid .suit-symbol{font-size:21px}
+  /* Four defender responses remain reachable in the bottom-docked panel. */
+  .game-stage[data-phase="following"] .actions .action-row{
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;
+  }
+  .game-stage[data-phase="following"] .actions .action-row .button{
+    width:100%;min-height:46px;white-space:normal;
+  }
+}

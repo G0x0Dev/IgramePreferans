@@ -240,7 +240,9 @@ test('priority bidder can match using Mogu',()=>{
   assert.equal(g.turn,1);
   auctionAction(g,1,'mogu');
   assert.equal(g.auction.highSeat,1);
+  assert.match(g.log.at(-1),/Moje 3\./,'priority action is announced as Moje');
   auctionAction(g,2,'pass');
+  assert.ok(g.log.some(line=>/: Dalje\.$/.test(line)),'passing is announced as Dalje without English text');
   assert.equal(g.phase,'talon');
   assert.equal(g.contract.declarer,1);
   assert.equal(g.contract.minimum,3);
@@ -344,7 +346,7 @@ test('kontra → rekontra → subkontra ends at ×8 (mort is removed)',()=>{
   assert.throws(()=>doubleAction(g,dec,'mortkontra'),/This action isn't available/);
   assert.equal(g.active.length,3);
 });
-test('three distinct follow messages are visible and decline options both sit out',()=>{
+test('declining follow messages are public; Ne, Ne bi and Imam želju all sit out',()=>{
   const g=game(); const dec=winBid(g,5);
   const first=g.turn,second=[0,1,2].find(i=>i!==first && i!==dec);
   follow(g,first,'ne');
@@ -357,10 +359,27 @@ test('three distinct follow messages are visible and decline options both sit ou
   assert.equal(g.phase,'summary');
   assert.match(g.log.at(-2),/Ne bi/);
 });
+test('Imam želju is a distinct spoken response with the same defensive result as Ne',()=>{
+  const wish=game();const dec=winBid(wish,5),first=wish.turn;
+  follow(wish,first,'imam-zelju');
+  assert.equal(wish.follows[first],false);
+  assert.equal(wish.followMessages[first],'Imam želju');
+  assert.equal(viewFor(wish,first,'ROOM').followMessages[first],'Imam želju');
+  assert.equal(wish.phase,'following','the other defender still gets a turn');
+  const second=wish.turn;
+  follow(wish,second,'ne');
+  assert.equal(wish.phase,'summary','two defenders declining hands the declarer an automatic pass');
+  assert.equal(wish.tricks[dec],10);
+  assert.match(wish.log.join('\\n'),/Imam želju/);
+  const one=game();winBid(one,4);
+  follow(one,one.turn,'dodjem');
+  follow(one,one.turn,'imam-zelju');
+  assert.equal(one.phase,'calling','the sole defender can still invite a partner');
+});
 test('Dođem chooses play and invalid follow choices are rejected',()=>{
   const g=game(); winBid(g,5);
   const first=g.turn;
-  assert.throws(()=>follow(g,first,'neee'),/Choose Dođem, Ne, or Ne bi/);
+  assert.throws(()=>follow(g,first,'neee'),/Choose Dođem, Ne, Ne bi, or Imam želju/);
   follow(g,first,'dodjem');
   assert.equal(g.follows[first],true);
   assert.equal(g.followMessages[first],'Dođem');
