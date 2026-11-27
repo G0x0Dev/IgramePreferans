@@ -38,17 +38,19 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});
     res.end(JSON.stringify({status:'ok',rooms:1}));return;
   }
-  const file=staticPaths.get(url.pathname);
+  // Only the 32 known card identifiers can resolve to local deck artwork.
+  const artwork=/^\/cards\/north-german\/[SDHC](?:7|8|9|10|J|Q|K|A)\.png$/.test(url.pathname);
+  const file=artwork?url.pathname.slice(1):staticPaths.get(url.pathname);
   if(req.method!=='GET'||!file){res.writeHead(404);res.end('Not found');return;}
   try{
     const bytes=await readFile(join(publicDir,file));
     res.writeHead(200,{
-      'Content-Type':mime[file],
+      'Content-Type':artwork?'image/png':mime[file],
       'X-Content-Type-Options':'nosniff',
       'Referrer-Policy':'same-origin',
-      'Cache-Control':'no-store'
+      'Cache-Control':artwork?'public, max-age=86400':'no-store'
     });res.end(bytes);
-  }catch{res.writeHead(500);res.end('Unable to serve site');}
+  }catch{res.writeHead(artwork?404:500);res.end(artwork?'Card artwork unavailable':'Unable to serve site');}
 });
 function frame(data,opcode=1){
   const payload=Buffer.isBuffer(data)?data:Buffer.from(data);

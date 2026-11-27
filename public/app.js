@@ -158,6 +158,7 @@
     return `<div class="playing-card french-card ${tiny?'tiny':''} ${red?'red':'black'} ${disabled?'disabled':''} ${selectedCard?'selected':''}" ${selectable?`data-card="${esc(c)}" role="button" tabindex="0" aria-label="${rankLabel} of ${suitLabel}"`:''}>
       <span class="card-corner"><b>${esc(rank)}</b><small>${symbol}</small></span>
       <span class="french-face" aria-hidden="true">${cardFace(rank,symbol)}</span>
+      <img class="north-german-face" src="/cards/north-german/${esc(c)}.png" alt="" aria-hidden="true" draggable="false" onerror="this.hidden=true">
       <span class="card-corner mirrored" aria-hidden="true"><b>${esc(rank)}</b><small>${symbol}</small></span></div>`;
   }
   function button(title,action,opts={}) {
